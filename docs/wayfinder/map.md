@@ -31,11 +31,12 @@ A complete business-logic spec for a private, local-first, zero-based envelope b
 - [Migration: Actual import, YNAB comparison, and tag mapping](tickets/14-migration-import-compare.md): import all of Actual's history as one revertable group; four-part comparison with YNAB; pull in missing items one by one.
 - [Tech stack and module boundaries](tickets/15-tech-stack.md): Flutter + a pure-Dart `budget_core` workspace; SQLCipher; libsodium; notarized DMG + Play Store.
 - [Open-source repo settings](tickets/16-open-source-repo-settings.md): public `Shir0o/budget`, MIT, org Tier 2 now and Tier 1 with the first code, push protection, `no-real-data` CI check.
+- [Provide real Actual and YNAB exports](tickets/05-provide-sample-exports.md): exported zips placed in `private/` and validated locally.
+- [Verify migration against real exports](tickets/18-verify-migration-against-real-exports.md): formats, YNAB custom flag labels, `#tags` (564 tagged), and account/category pairings verified against real exports.
 
 ## Open tickets (frontier)
 
-- [Provide real Actual and YNAB exports](tickets/05-provide-sample-exports.md): **HITL, you.** Unblocks the verification below.
-- [Verify migration against real exports](tickets/18-verify-migration-against-real-exports.md): blocked by the ticket above.
+None. The way to the destination is completely clear: all business logic, data models, migration rules, and repo infrastructure are fully specified and verified.
 
 ## Not yet specified
 
