@@ -17,7 +17,7 @@ Source: YNAB help ("Export budget data"). Confirm against the real file in [Veri
   - `Outflow` and `Inflow` are both positive numbers. Signed amount = `Inflow − Outflow`.
   - Amounts can include a currency symbol and thousands separators. Strip them, then parse to integer cents.
   - `Date` follows the user's YNAB date setting. Detect the format by sampling rows; the order is ambiguous only when every sampled day is ≤ 12, and then we ask the user.
-  - `Flag` is a color name (Red, Orange, Yellow, Green, Blue, Purple) or blank.
+  - `Flag` is either a color name (Red, Orange, Yellow, Green, Blue, Purple), a custom flag label name (e.g., `Work Meals`, `Work Travel`), or blank.
   - `Cleared` is `Cleared`, `Uncleared`, or `Reconciled`.
   - **Splits** are flattened into one row per line, with a memo prefix `Split (n/m)`. Group consecutive rows that share account, date, and payee and run n = 1..m.
   - **Transfers** use the payee `Transfer : <Account name>`.
