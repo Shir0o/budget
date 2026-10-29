@@ -1,0 +1,6 @@
+# Real financial data — never commit (see docs/wayfinder/tickets/16-open-source-repo-settings.md)
+private/
+*.budgetbackup
+**/actual-export*.zip
+**/ynab-export*.zip
+*.sqlite
