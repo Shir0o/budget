@@ -45,7 +45,9 @@ void main() {
         lines: [const LineInput(amount: Money(-4820))],
       ),
     );
-    final transactionId = engine.state.transactions.single.id;
+    final transactionId = engine.state.transactions
+        .firstWhere((transaction) => transaction.payee == 'Sunset Storage')
+        .id;
 
     final result = engine.execute(
       RedactField(
