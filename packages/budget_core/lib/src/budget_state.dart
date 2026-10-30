@@ -186,6 +186,11 @@ final class BudgetState {
     return total;
   }
 
+  /// Every month any Category has an Assignment in, in order.
+  List<CalendarMonth> get assignmentMonths =>
+      {for (final byMonth in _assigned.values) ...byMonth.keys}.toList()
+        ..sort();
+
   /// The last month in which [categoryId] has an Assignment or Activity.
   CalendarMonth? lastActiveMonth(String categoryId) =>
       _activeMonths(categoryId).lastOrNull;

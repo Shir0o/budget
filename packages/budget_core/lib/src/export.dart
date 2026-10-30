@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'budget_state.dart';
+import 'civil_date.dart';
 import 'event.dart';
+import 'money.dart';
 
 // Plain-text exports (ticket 12). Each is a pure function of a BudgetState,
 // so what the Export screen saves is exactly what the core queries answer.
@@ -22,25 +24,54 @@ String transactionsCsv(BudgetState state) => _csv(
           t.payee,
           line.category == readyToAssignCategory
               ? 'Ready to Assign'
-              : line.category,
+              : state.category(line.category)?.name ?? line.category,
           _decimal(line.amount.cents),
         ],
   ],
 );
 
 /// Monthly Assignments in the shape of a YNAB Plan export (ticket 02): one
-/// row per category and month. Assignments arrive with the Categories
-/// ticket, so until then this holds the header only.
-String assignmentsCsv(BudgetState state) => _csv(const [
-  'Month',
-  'Category Group/Category',
-  'Category Group',
-  'Category',
-  'Assigned',
-], const []);
+/// row per Category and month, for every month from the first Assignment
+/// to the last, ordered by month, then group, then Category.
+String assignmentsCsv(BudgetState state) {
+  final months = state.assignmentMonths;
+  return _csv(
+    const [
+      'Month',
+      'Category Group/Category',
+      'Category Group',
+      'Category',
+      'Assigned',
+    ],
+    [
+      if (months.isNotEmpty)
+        for (
+          var month = months.first;
+          month.compareTo(months.last) <= 0;
+          month = month.next
+        )
+          for (final group in state.categoryGroups)
+            for (final category in state.categories)
+              if (category.groupId == group.id)
+                [
+                  '${_monthNames[month.month - 1]} ${month.year}',
+                  '${group.name}: ${category.name}',
+                  group.name,
+                  category.name,
+                  _decimal(state.assigned(category.id, month).cents),
+                ],
+    ],
+  );
+}
 
-/// The whole current state as indented JSON. Not encrypted.
-String stateJson(BudgetState state) {
+const _monthNames = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/// The whole current state as indented JSON, with Ready to Assign as it
+/// stands during [month]. Not encrypted.
+String stateJson(BudgetState state, {required CalendarMonth month}) {
   final budget = state.budget;
   return const JsonEncoder.withIndent('  ').convert({
     'format': 'budget-state',
@@ -68,7 +99,30 @@ String stateJson(BudgetState state) {
           ],
         },
     ],
-    'readyToAssignCents': state.readyToAssign.cents,
+    'categoryGroups': [
+      for (final g in state.categoryGroups) {'id': g.id, 'name': g.name},
+    ],
+    'categories': [
+      for (final c in state.categories)
+        {
+          'id': c.id,
+          'groupId': c.groupId,
+          'name': c.name,
+          'archived': c.archived,
+        },
+    ],
+    'assignments': [
+      for (final m in state.assignmentMonths)
+        for (final c in state.categories)
+          if (state.assigned(c.id, m) != Money.zero)
+            {
+              'category': c.id,
+              'month': m.toIso(),
+              'assignedCents': state.assigned(c.id, m).cents,
+            },
+    ],
+    'month': month.toIso(),
+    'readyToAssignCents': state.readyToAssign(month).cents,
   });
 }
 

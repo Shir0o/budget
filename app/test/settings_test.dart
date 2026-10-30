@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:budget/app.dart';
 import 'package:budget/services.dart';
+import 'package:budget/widgets.dart';
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -112,7 +113,10 @@ void main() {
       final csv = saved.keys.singleWhere((n) => n.contains('assignments'));
       final json = saved.keys.singleWhere((n) => n.endsWith('.json'));
       expect(utf8.decode(saved[csv]!), assignmentsCsv(engine.state));
-      expect(utf8.decode(saved[json]!), stateJson(engine.state));
+      expect(
+        utf8.decode(saved[json]!),
+        stateJson(engine.state, month: thisMonth()),
+      );
     });
 
     testWidgets('seals the backup with the Budget Key, kept out of the log', (
