@@ -71,11 +71,15 @@ CommandResult _commitImport(
     final sum = transaction.lines.fold(Money.zero, (t, l) => t + l.amount);
     if (sum != transaction.amount) return _invalidImport;
     if (transaction.startingBalance) {
-      final onBudget = accounts[transaction.accountId]!.type.onBudget;
-      if (!onBudget && transaction.lines.any((l) => l.category != null)) {
+      // A card's or tracking account's Starting Balance has no Category; a
+      // cash account's goes to Ready to Assign (ticket 07 example 6).
+      final type = accounts[transaction.accountId]!.type;
+      final toReadyToAssign = type.onBudget && type != AccountType.creditCard;
+      if (!toReadyToAssign &&
+          transaction.lines.any((l) => l.category != null)) {
         return _invalidImport;
       }
-      if (onBudget &&
+      if (toReadyToAssign &&
           transaction.lines.any((l) => l.category != readyToAssignCategory)) {
         return _invalidImport;
       }

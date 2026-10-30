@@ -17,13 +17,16 @@ import 'package:sqlite3/sqlite3.dart';
 /// - Travel Card: −5000 − 4000 − 2500 + 20000 = 8500
 /// - Brokerage: 100000
 /// - Old Checking: −1000
-Uint8List syntheticActualZip() {
+///
+/// [extraRows] is more SQL run after the rows above.
+Uint8List syntheticActualZip({String extraRows = ''}) {
   final directory = Directory.systemTemp.createTempSync('actual_fixture');
   final path = '${directory.path}/db.sqlite';
   try {
     final database = sqlite3.open(path);
     database.execute(_schema);
     database.execute(_rows);
+    if (extraRows.isNotEmpty) database.execute(extraRows);
     database.close();
     final bytes = File(path).readAsBytesSync();
     final metadata = utf8.encode(
