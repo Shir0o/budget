@@ -57,11 +57,13 @@ extension AutomationQueries on BudgetState {
   Money availableBeforeAssigning(String categoryId, CalendarMonth month) =>
       carry(categoryId, month) + activity(categoryId, month);
 
-  /// What [categoryId]'s Target needs in [month]. Zero without a Target.
-  Money needed(String categoryId, CalendarMonth month) =>
-      target(categoryId)
-          ?.needed(month, availableBeforeAssigning(categoryId, month)) ??
-      Money.zero;
+  /// What [categoryId]'s Target needs in [month]. Zero without a Target. A
+  /// Driven-by-schedule Target sums the Category's Scheduled Transactions
+  /// (ticket 10), which is why the sum lives in `neededFor`.
+  Money needed(String categoryId, CalendarMonth month) {
+    final target = this.target(categoryId);
+    return target == null ? Money.zero : neededFor(categoryId, target, month);
+  }
 
   /// max(0, Needed − Assigned).
   Money underfunded(String categoryId, CalendarMonth month) {

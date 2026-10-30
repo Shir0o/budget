@@ -353,6 +353,9 @@ String _detail(BudgetState state, Suggestion line, CalendarMonth month) {
     KeepAtLeastTarget() =>
       'Tops up to ${target.amount.format()} · has '
           '${state.availableBeforeAssigning(line.categoryId, month).format()}',
+    DrivenByScheduleTarget() =>
+      'Sums ${state.schedulesFor(line.categoryId).length} scheduled '
+          '${state.schedulesFor(line.categoryId).length == 1 ? 'transaction' : 'transactions'}',
   };
 }
 

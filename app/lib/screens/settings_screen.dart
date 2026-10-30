@@ -7,6 +7,8 @@ import '../theme.dart';
 import 'app_lock_screen.dart';
 import 'categories_screen.dart';
 import 'export_screen.dart';
+import 'forecast_screen.dart';
+import 'schedules_screen.dart';
 
 /// Settings (canvas: Settings). It lists only what exists today. A later
 /// ticket adds its row to the matching section in [_sections].
@@ -43,6 +45,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           label: 'Category priority',
           value: '${widget.engine.state.priority.length} categories',
           onTap: () => _open(CategoriesScreen(engine: widget.engine)),
+        ),
+        SettingsRow(
+          label: 'Scheduled transactions',
+          value: '${widget.engine.state.schedules.length} scheduled',
+          onTap: () => _open(SchedulesScreen(engine: widget.engine)),
+        ),
+        SettingsRow(
+          label: 'Forecast',
+          value: 'Next 12 months',
+          onTap: () => _open(ForecastScreen(engine: widget.engine)),
         ),
       ],
     ),

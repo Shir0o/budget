@@ -16,6 +16,7 @@ import 'sensitive_numbers.dart';
 import 'target.dart';
 
 part 'engine_accounts.dart';
+part 'engine_schedules.dart';
 part 'engine_targets.dart';
 
 const _uuid = Uuid();
@@ -327,6 +328,14 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
       return _acceptSuggestions(command, state, stamp);
     case RunAutomation():
       return _runAutomation(command, state, stamp);
+    case CreateSchedule():
+      return _createSchedule(command, state, stamp);
+    case EditSchedule():
+      return _editSchedule(command, state, stamp);
+    case DeleteSchedule():
+      return _deleteSchedule(command, state, stamp);
+    case EnterSchedule():
+      return _enterSchedule(command, state, stamp);
   }
 }
 

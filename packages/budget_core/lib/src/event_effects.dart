@@ -1,15 +1,24 @@
 import 'event.dart';
 
 /// The kinds of thing an Event can change.
-enum EntityKind { budget, account, categoryGroup, category, transaction }
+enum EntityKind {
+  budget,
+  account,
+  categoryGroup,
+  category,
+  transaction,
+  schedule,
+}
 
-/// One budget, account, category group, Category or transaction.
+/// One budget, account, category group, Category, transaction or Scheduled
+/// Transaction.
 final class EntityRef {
   const EntityRef(this.kind, this.id);
 
   const EntityRef.account(this.id) : kind = EntityKind.account;
   const EntityRef.category(this.id) : kind = EntityKind.category;
   const EntityRef.transaction(this.id) : kind = EntityKind.transaction;
+  const EntityRef.schedule(this.id) : kind = EntityKind.schedule;
 
   final EntityKind kind;
   final String id;
@@ -282,6 +291,52 @@ final Map<String, EventSpec> eventSpecs = {
       }),
     ],
   ),
+  EventType.scheduleCreated: EventSpec(
+    (p) => [
+      Creates(EntityRef.schedule(_id(p, 'scheduleId')), {
+        'accountId': p['accountId'],
+        'payee': p['payee'],
+        'memo': p['memo'] ?? '',
+        'amountCents': p['amountCents'],
+        'category': p['category'],
+        'every': p['every'],
+        'interval': p['interval'],
+        'nextDue': p['nextDue'],
+      }),
+    ],
+    references: (p) => [
+      EntityRef.account(_id(p, 'accountId')),
+      if (p['category'] case final String category
+          when category != readyToAssignCategory)
+        EntityRef.category(category),
+    ],
+  ),
+  EventType.scheduleFieldsSet: EventSpec(
+    (p) => [
+      SetsFields(
+        EntityRef.schedule(_id(p, 'scheduleId')),
+        (p['fields'] as Map).cast<String, Object?>(),
+      ),
+    ],
+    references: (p) => switch ((p['fields'] as Map)['category']) {
+      final String category when category != readyToAssignCategory => [
+        EntityRef.category(category),
+      ],
+      _ => const [],
+    },
+  ),
+  EventType.scheduleDeleted: _lifecycle(
+    EntityKind.schedule,
+    'scheduleId',
+    deletedField,
+    true,
+  ),
+  EventType.scheduleRestored: _lifecycle(
+    EntityKind.schedule,
+    'scheduleId',
+    deletedField,
+    false,
+  ),
 };
 
 /// The Events that set [fields] on [entity], or null when one of them
@@ -378,6 +433,22 @@ List<PlannedEvent>? writeFields(EntityRef entity, Map<String, Object?> fields) {
       return [
         (EventType.prioritySet, {'categoryIds': rest[priorityField] ?? []}),
       ];
+    case EntityKind.schedule:
+      final key = 'scheduleId';
+      if (rest.isNotEmpty) {
+        events.add((
+          EventType.scheduleFieldsSet,
+          {key: entity.id, 'fields': rest},
+        ));
+      }
+      if (deleted == null) return events;
+      final event = lifecycle(
+        EventType.scheduleDeleted,
+        EventType.scheduleRestored,
+        key,
+      );
+      deleted ? events.add(event) : events.insert(0, event);
+      return events;
   }
 }
 

@@ -603,6 +603,7 @@ final class ChangeHistory {
           EntityKind.categoryGroup => 'category group',
           EntityKind.category => 'category',
           EntityKind.transaction => null,
+          EntityKind.schedule => 'scheduled transaction',
         };
         final created = _label(entity, (a.effect as Creates).fields);
         return _Described(
@@ -769,8 +770,16 @@ final class ChangeHistory {
   }
 
   /// How an entity reads in a summary: a name, or a transaction's payee
-  /// and amount (`Corner Bistro −48.20`).
+  /// and amount (`Corner Bistro −48.20`), or a Scheduled Transaction's
+  /// payee.
   String _label(EntityRef entity, Map<String, Object?> values) {
+    if (entity.kind == EntityKind.schedule) {
+      final payee =
+          values['payee'] as String? ??
+          _values[entity]?['payee'] as String? ??
+          '';
+      return payee.isEmpty ? 'Scheduled transaction' : payee;
+    }
     if (entity.kind != EntityKind.transaction) {
       return values['name'] as String? ??
           _values[entity]?['name'] as String? ??
@@ -803,7 +812,12 @@ final class ChangeHistory {
     if (value == null) return 'empty';
     return switch (field) {
       'payee' || 'memo' => (value as String).isEmpty ? 'empty' : '“$value”',
-      'date' => _date(value as String),
+      'date' || 'nextDue' => _date(value as String),
+      'amountCents' => _signed(value as int),
+      'category' => _categoryName(value),
+      'accountId' =>
+        _values[EntityRef.account(value as String)]?['name'] as String? ??
+            'Unknown account',
       'cleared' => switch (value) {
         'cleared' => 'Cleared',
         'reconciled' => 'Reconciled',
@@ -820,11 +834,14 @@ final class ChangeHistory {
       archivedField => value == true ? 'Archived' : 'Active',
       targetField => () {
         final target = Target.fromJson((value as Map).cast());
-        return '${target.amount.format()} ${switch (target) {
-          RepeatingTarget() => 'repeating',
-          ByDateTarget() => 'by ${_date(target.date.toIso())}',
-          KeepAtLeastTarget() => 'kept at least',
-        }}';
+        return switch (target) {
+          RepeatingTarget(:final amount) => '${amount.format()} repeating',
+          ByDateTarget(:final amount, :final date) =>
+            '${amount.format()} by ${_date(date.toIso())}',
+          KeepAtLeastTarget(:final amount) =>
+            '${amount.format()} kept at least',
+          DrivenByScheduleTarget() => 'driven by schedule',
+        };
       }(),
       automationModeField => switch (value) {
         'off' => 'Off',
@@ -933,6 +950,9 @@ String _more(int count, String noun) =>
 
 String _fieldName(String field) => switch (field) {
   splitField => 'Amount and lines',
+  'amountCents' => 'Amount',
+  'nextDue' => 'Next due',
+  'accountId' => 'Account',
   _ => '${field[0].toUpperCase()}${field.substring(1)}',
 };
 

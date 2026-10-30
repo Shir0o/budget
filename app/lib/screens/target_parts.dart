@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
-// Shared by the Category, Set Target and Assign screens (ticket 08).
+// Shared by the Category, Set Target, Assign and schedule screens (tickets
+// 08 and 10).
 
 /// `day`, `week`, `month` or `year`.
 String intervalName(TargetInterval interval, {int count = 1}) {
@@ -17,34 +18,73 @@ String intervalName(TargetInterval interval, {int count = 1}) {
   return count == 1 ? name : '${name}s';
 }
 
+/// A number of days, weeks, months or years.
+class IntervalPicker extends StatelessWidget {
+  const IntervalPicker({
+    super.key,
+    required this.value,
+    required this.count,
+    required this.onChanged,
+  });
+
+  final TargetInterval value;
+
+  /// The number to pluralise with.
+  final int count;
+  final ValueChanged<TargetInterval> onChanged;
+
+  @override
+  Widget build(BuildContext context) => DropdownButtonFormField<TargetInterval>(
+    key: const ValueKey('target-interval'),
+    initialValue: value,
+    isExpanded: true,
+    items: [
+      for (final interval in TargetInterval.values)
+        DropdownMenuItem(
+          value: interval,
+          child: Text(intervalName(interval, count: count)),
+        ),
+    ],
+    onChanged: (interval) {
+      if (interval != null) onChanged(interval);
+    },
+  );
+}
+
 /// `every month` or `every 6 months`.
 String everyText(RepeatingTarget target) => target.every == 1
     ? 'every ${intervalName(target.interval)}'
     : 'every ${target.every} ${intervalName(target.interval, count: 2)}';
 
 /// `Repeating · $300.00 every month`, as on the Category screen.
-String describeTarget(Target target) => switch (target) {
+String describeTarget(Target target, {int scheduled = 0}) => switch (target) {
   RepeatingTarget() =>
     'Repeating · ${target.amount.formatDollars()} ${everyText(target)}',
   ByDateTarget(:final date) =>
     'One-time · ${target.amount.formatDollars()} by ${formatDate(date)}',
   KeepAtLeastTarget() => 'Keep at least · ${target.amount.formatDollars()}',
+  DrivenByScheduleTarget() =>
+    scheduled == 1
+        ? 'Driven by schedule · 1 transaction'
+        : 'Driven by schedule · $scheduled transactions',
 };
 
 /// `Nov`
 String shortMonth(CalendarMonth month) => formatMonth(month).substring(0, 3);
 
 /// How [target]'s Needed in [month] is worked out, given what the Category
-/// holds before assigning: `600.00 over 6 months, Nov–Apr`.
+/// holds before assigning: `600.00 over 6 months, Nov–Apr`. [scheduled] is
+/// how many Scheduled Transactions a Driven-by-schedule Target sums.
 String neededExplanation(
   Target target,
   CalendarMonth month,
-  Money availableBeforeAssigning,
-) {
-  String over(CalendarMonth due) {
-    final remaining = target.amount - availableBeforeAssigning;
+  Money availableBeforeAssigning, {
+  int scheduled = 0,
+}) {
+  String over(Money amount, CalendarMonth due) {
+    final remaining = amount - availableBeforeAssigning;
     if (!remaining.isPositive) {
-      return 'Already holds ${target.amount.format()}';
+      return 'Already holds ${amount.format()}';
     }
     final months = monthsThrough(month, due);
     return months == 1
@@ -58,12 +98,22 @@ String neededExplanation(
       '${target.dueDatesIn(month)} due '
           '${target.dueDatesIn(month) == 1 ? 'date' : 'dates'} × '
           '${target.amount.format()}',
-    RepeatingTarget() => over(CalendarMonth.of(target.dueFor(month))),
+    RepeatingTarget(:final amount) => over(
+      amount,
+      CalendarMonth.of(target.dueFor(month)),
+    ),
     ByDateTarget() when target.isCompleteIn(month) => 'Complete',
-    ByDateTarget(:final date) => over(CalendarMonth.of(date)),
-    KeepAtLeastTarget() =>
-      'Tops up to ${target.amount.format()} · has '
+    ByDateTarget(:final amount, :final date) => over(
+      amount,
+      CalendarMonth.of(date),
+    ),
+    KeepAtLeastTarget(:final amount) =>
+      'Tops up to ${amount.format()} · has '
           '${availableBeforeAssigning.format()}',
+    DrivenByScheduleTarget() =>
+      scheduled == 1
+          ? 'Sums 1 scheduled transaction'
+          : 'Sums $scheduled scheduled transactions',
   };
 }
 
@@ -184,7 +234,13 @@ class _Progress extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       spacing: 6,
       children: [
-        Text(describeTarget(target), style: const TextStyle(fontSize: 14)),
+        Text(
+          describeTarget(
+            target,
+            scheduled: state.schedulesFor(categoryId).length,
+          ),
+          style: const TextStyle(fontSize: 14),
+        ),
         ClipRRect(
           borderRadius: BorderRadius.circular(3),
           child: LinearProgressIndicator(

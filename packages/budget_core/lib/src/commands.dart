@@ -347,6 +347,81 @@ final class RunAutomation extends Command {
 /// The note on an accepted Suggestion Batch's Assignments.
 const acceptedSuggestionNote = 'accepted automation suggestion';
 
+// Scheduled Transactions (ticket 10).
+
+/// Adds a future or repeating transaction. It counts in nothing until
+/// [EnterSchedule] enters it as a real Transaction.
+///
+/// [category] is a Category id for an outflow and [readyToAssignCategory]
+/// for income, which is why [amount]'s sign decides what [category] may be.
+final class CreateSchedule extends Command {
+  const CreateSchedule({
+    required this.accountId,
+    required this.payee,
+    required this.amount,
+    required this.category,
+    required this.every,
+    required this.interval,
+    required this.nextDue,
+    this.memo = '',
+  });
+
+  final String accountId;
+  final String payee;
+
+  /// Negative for an outflow, positive for income.
+  final Money amount;
+  final String category;
+
+  /// 1 or more.
+  final int every;
+  final TargetInterval interval;
+  final CivilDate nextDue;
+  final String memo;
+}
+
+/// Changes a Scheduled Transaction. Null fields stay as they are. The whole
+/// change is one Event group, and each field is last writer wins on its own.
+final class EditSchedule extends Command {
+  const EditSchedule({
+    required this.scheduleId,
+    this.accountId,
+    this.payee,
+    this.amount,
+    this.category,
+    this.every,
+    this.interval,
+    this.nextDue,
+    this.memo,
+  });
+
+  final String scheduleId;
+  final String? accountId;
+  final String? payee;
+  final Money? amount;
+  final String? category;
+  final int? every;
+  final TargetInterval? interval;
+  final CivilDate? nextDue;
+  final String? memo;
+}
+
+final class DeleteSchedule extends Command {
+  const DeleteSchedule({required this.scheduleId});
+
+  final String scheduleId;
+}
+
+/// Enters [scheduleId] as a real, Unreviewed Transaction dated its next due
+/// date, and moves the schedule on by one interval (ticket 08). The line has
+/// no business status, so Review asks the person for one: nothing is
+/// categorized for them.
+final class EnterSchedule extends Command {
+  const EnterSchedule({required this.scheduleId});
+
+  final String scheduleId;
+}
+
 /// Why a command was refused.
 enum Rejection {
   /// [CreateBudget] when the log already holds a budget.
@@ -358,7 +433,8 @@ enum Rejection {
   /// A blank budget or account name.
   nameRequired,
 
-  /// [RecordIncome] or a transaction in an account that doesn't exist.
+  /// [RecordIncome], a transaction or a Scheduled Transaction in an account
+  /// that doesn't exist.
   unknownAccount,
 
   /// [RecordIncome] of zero or less.
@@ -389,7 +465,7 @@ enum Rejection {
   /// A transaction id that doesn't exist or was deleted.
   unknownTransaction,
 
-  /// A transaction of 0.00.
+  /// A transaction or Scheduled Transaction of 0.00.
   zeroAmount,
 
   /// A transaction with no lines.
@@ -464,7 +540,8 @@ enum Rejection {
   /// A Target of zero or less.
   targetAmountMustBePositive,
 
-  /// A Repeating Target every 0 or fewer days, weeks, months or years.
+  /// A Repeating Target or Scheduled Transaction every 0 or fewer days,
+  /// weeks, months or years.
   intervalMustBePositive,
 
   /// [SetPriority] listing a Category twice.
@@ -472,6 +549,13 @@ enum Rejection {
 
   /// [AcceptSuggestions] for a Category that isn't in the batch.
   notSuggested,
+
+  /// A Scheduled Transaction id that doesn't exist or was deleted.
+  unknownSchedule,
+
+  /// [CreateSchedule] or [EditSchedule] of income that isn't to Ready to
+  /// Assign, or of an outflow without a Category.
+  scheduleCategoryRequired,
 }
 
 /// What a command produced.

@@ -6,8 +6,16 @@ CommandResult _setTarget(SetTarget command, BudgetState state, _Stamp stamp) {
   final id = command.categoryId;
   if (_checkActive(state, id) case final rejected?) return rejected;
   final target = command.target;
-  if (!target.amount.isPositive) {
-    return const Rejected(Rejection.targetAmountMustBePositive);
+  switch (target) {
+    // A Driven-by-schedule Target has no amount of its own: it sums the
+    // Category's Scheduled Transactions.
+    case RepeatingTarget(:final amount) ||
+        ByDateTarget(:final amount) ||
+        KeepAtLeastTarget(:final amount):
+      if (!amount.isPositive) {
+        return const Rejected(Rejection.targetAmountMustBePositive);
+      }
+    case DrivenByScheduleTarget():
   }
   if (target is RepeatingTarget && target.every < 1) {
     return const Rejected(Rejection.intervalMustBePositive);

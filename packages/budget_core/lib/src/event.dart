@@ -167,6 +167,26 @@ abstract final class EventType {
 
   /// `{categoryIds}`: the whole priority order, replaced as a whole.
   static const prioritySet = 'PrioritySet';
+
+  // Scheduled Transactions (ticket 10).
+
+  /// `{scheduleId, accountId, payee, memo, amountCents, category, every,
+  /// interval, nextDue}`, where `amountCents` is negative for an outflow and
+  /// positive for income, `category` is a Category id or
+  /// [readyToAssignCategory], and `interval` is days, weeks, months or
+  /// years. It counts in nothing until a Transaction is entered.
+  static const scheduleCreated = 'ScheduleCreated';
+
+  /// `{scheduleId, fields}`, one field of a Scheduled Transaction at a time
+  /// and last writer wins on each: `accountId`, `payee`, `memo`,
+  /// `amountCents`, `category`, `every`, `interval` or `nextDue`.
+  static const scheduleFieldsSet = 'ScheduleFieldsSet';
+
+  /// `{scheduleId}`
+  static const scheduleDeleted = 'ScheduleDeleted';
+
+  /// `{scheduleId}`
+  static const scheduleRestored = 'ScheduleRestored';
 }
 
 /// The `category` value of a transaction line whose money goes to
