@@ -40,6 +40,42 @@ final class SyncOutcome {
   final String? error;
 }
 
+/// What a pairing found in Drive, for the Join screen.
+final class JoinOutcome {
+  const JoinOutcome({required this.events, required this.devices, this.error});
+
+  /// Every Event the budget holds, whichever device wrote it, in HLC order.
+  final List<Event> events;
+
+  /// How many device folders contributed.
+  final int devices;
+
+  /// What went wrong, or null when the pairing read the budget.
+  final String? error;
+}
+
+/// What one key rotation did, for the Recovery phrase screen.
+final class RotationOutcome {
+  const RotationOutcome({
+    required this.book,
+    required this.snapshotEvents,
+    required this.deletedFiles,
+    this.error,
+  });
+
+  /// This device's sync state after the rotation.
+  final SyncBook book;
+
+  /// Events the fresh snapshot holds, which is the whole budget.
+  final int snapshotEvents;
+
+  /// Files the old key sealed, now deleted from Drive.
+  final int deletedFiles;
+
+  /// What went wrong, or null when the rotation finished.
+  final String? error;
+}
+
 /// Moves one budget's Events through Drive, one folder per device, every
 /// file sealed with the Budget Key (ticket 12, ADR 0002).
 ///
@@ -190,12 +226,200 @@ final class SyncClient {
     error: message,
   );
 
-  /// The folder called [name] under [parent], made when it isn't there yet.
-  Future<String> _folder(String name, String? parent) async {
-    for (final entry in await drive.list(parent)) {
-      if (entry.isFolder && entry.name == name) return entry.id;
+  /// Joins another device's budget with the key from its QR code (ticket 12):
+  /// reads every device folder under [budgetId] and returns the Events they
+  /// hold. Nothing is written, so a wrong code changes nothing here or in
+  /// Drive.
+  Future<JoinOutcome> join({
+    required String budgetId,
+    required BudgetKey key,
+  }) async {
+    try {
+      final budgetFolder = await _find(budgetId, null);
+      if (budgetFolder == null) {
+        return const JoinOutcome(
+          events: [],
+          devices: 0,
+          error: 'No synced budget uses that code.',
+        );
+      }
+      final events = <Event>[];
+      var devices = 0;
+      for (final folder in await drive.list(budgetFolder.id)) {
+        if (!folder.isFolder) continue;
+        final batch = await _readDevice(folder, budgetId, key);
+        if (batch.distinct.isEmpty) continue;
+        events.addAll(batch.distinct);
+        devices++;
+      }
+      if (events.any((event) => event.budgetId != budgetId)) {
+        return const JoinOutcome(
+          events: [],
+          devices: 0,
+          error: 'Those Events belong to another budget.',
+        );
+      }
+      if (events.isEmpty) {
+        return const JoinOutcome(
+          events: [],
+          devices: 0,
+          error: 'That budget has nothing in Drive yet.',
+        );
+      }
+      final seen = <String>{};
+      return JoinOutcome(
+        events: [
+          for (final event in events)
+            if (seen.add(event.id)) event,
+        ]..sort((a, b) => a.hlc.compareTo(b.hlc)),
+        devices: devices,
+      );
+    } on DriveException catch (error) {
+      return JoinOutcome(events: const [], devices: 0, error: error.message);
+    } on SyncException catch (error) {
+      return JoinOutcome(events: const [], devices: 0, error: error.message);
     }
-    return drive.createFolder(name, folderId: parent);
+  }
+
+  /// Rotates the Budget Key (ticket 12, for a lost or stolen device): seals a
+  /// fresh snapshot of every Event with [newKey], deletes every file the old
+  /// key sealed, and starts this device's folder again.
+  ///
+  /// Every other device is unpaired by this: its key no longer opens anything,
+  /// so it has to join again with the new QR code. [oldKey] must open what is
+  /// in Drive, so rotating with a wrong key deletes nothing.
+  Future<RotationOutcome> rotate({
+    required BudgetEngine engine,
+    required BudgetKey oldKey,
+    required BudgetKey newKey,
+    required SyncBook book,
+    String platform = 'android',
+  }) async {
+    final budget = engine.state.budget;
+    if (budget == null) {
+      return _rotationFailed(book, 'Create the budget before turning on sync.');
+    }
+    final budgetId = budget.id;
+    final deviceId = engine.deviceId;
+    try {
+      final budgetFolder = await _folder(budgetId, null);
+      final deviceFolders = [
+        for (final entry in await drive.list(budgetFolder))
+          if (entry.isFolder) entry,
+      ];
+      try {
+        await _prove(budgetId, deviceFolders, oldKey);
+      } on SyncException {
+        return _rotationFailed(
+          book,
+          'That isn’t this budget’s current Budget Key.',
+        );
+      }
+      var deleted = 0;
+      for (final folder in deviceFolders) {
+        for (final file in await drive.list(folder.id)) {
+          await drive.delete(file.id);
+          deleted++;
+        }
+      }
+
+      // The snapshot is now Drive's only copy of the log, so it holds every
+      // Event from every device, not just this one's.
+      final events = engine.events;
+      final folderId =
+          (await _find(deviceId, budgetFolder))?.id ??
+          await drive.createFolder(deviceId, folderId: budgetFolder);
+      final snapshot = Snapshot(
+        budgetId: budgetId,
+        deviceId: deviceId,
+        covered: events.last.hlc,
+        events: events,
+      );
+      await _write(
+        budgetId,
+        deviceId,
+        folderId,
+        snapshot.name,
+        snapshot.toJson(),
+        newKey,
+      );
+      final own = [
+        for (final event in events)
+          if (event.deviceId == deviceId) event,
+      ];
+      await _writeManifest(
+        folderId,
+        DeviceManifest(
+          deviceId: deviceId,
+          platform: platform,
+          latestSeq: 0,
+          eventCount: own.length,
+          updatedMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+        budgetId,
+        newKey,
+      );
+      return RotationOutcome(
+        book: SyncBook(
+          enabled: book.enabled,
+          uploadedEvents: own.length,
+          snapshottedEvents: own.length,
+          // New segments start at 1 again, beside the snapshot.
+          devices: deviceFolders.isEmpty ? 1 : deviceFolders.length,
+          lastSync: DateTime.now(),
+        ),
+        snapshotEvents: events.length,
+        deletedFiles: deleted,
+      );
+    } on DriveException catch (error) {
+      return _rotationFailed(book, error.message);
+    } on SyncException catch (error) {
+      return _rotationFailed(book, error.message);
+    }
+  }
+
+  /// A rotation that stopped, keeping the book as it was.
+  RotationOutcome _rotationFailed(SyncBook book, String message) =>
+      RotationOutcome(
+        book: book,
+        snapshotEvents: 0,
+        deletedFiles: 0,
+        error: message,
+      );
+
+  /// Opens one file under [budgetId] with [key], so a rotation with the wrong
+  /// key is refused before anything is deleted.
+  Future<void> _prove(
+    String budgetId,
+    List<DriveFile> folders,
+    BudgetKey key,
+  ) async {
+    for (final folder in folders) {
+      for (final file in await drive.list(folder.id)) {
+        if (file.name != DeviceManifest.fileName && !isEventFile(file.name)) {
+          continue;
+        }
+        await SealedFile.open(
+          name: _name(budgetId, folder.name, file.name),
+          file: await drive.download(file.id),
+          key: key,
+        );
+        return;
+      }
+    }
+  }
+
+  /// The folder called [name] under [parent], made when it isn't there yet.
+  Future<String> _folder(String name, String? parent) async =>
+      (await _find(name, parent))?.id ??
+      await drive.createFolder(name, folderId: parent);
+
+  /// The folder called [name] under [parent], or null when there is none.
+  Future<DriveFile?> _find(String name, String? parent) async {
+    for (final entry in await drive.list(parent)) {
+      if (entry.isFolder && entry.name == name) return entry;
+    }
+    return null;
   }
 
   /// Every Event [folder] holds, from its segments and snapshots, and the

@@ -99,9 +99,35 @@ void main() {
 
     await _tap(tester, find.byKey(const ValueKey('turn-on-sync')));
 
+    // The phrase is shown once now, before anything else (ticket 12).
+    expect(find.text('Recovery phrase'), findsOneWidget);
+    expect(find.byKey(const ValueKey('recovery-words')), findsOneWidget);
+    final shown = [
+      for (final element
+          in find
+              .descendant(
+                of: find.byKey(const ValueKey('recovery-words')),
+                matching: find.byType(Text),
+              )
+              .evaluate())
+        (element.widget as Text).data!,
+    ].where((text) => !RegExp(r'^\d+$').hasMatch(text)).toList();
+    expect(shown, hasLength(24));
+    expect(
+      (await RecoveryPhrase.parse(shown)).key.toHex(),
+      (await services.keys.keyFor(seed.engine.state.budget!.id)).toHex(),
+    );
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
     // The screen switched to the on state and synced once.
     expect(find.text('Sync now'), findsOneWidget);
     expect(find.text('This device only'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.textContaining('from this one'),
+      120,
+      scrollable: find.byType(Scrollable),
+    );
     expect(find.textContaining('from this one'), findsOneWidget);
 
     // Every file went into this device's folder, named by an id only.
@@ -133,6 +159,8 @@ void main() {
     await tester.pumpWidget(BudgetApp(engine: seed.engine, services: services));
     await _openSync(tester);
     await _tap(tester, find.byKey(const ValueKey('turn-on-sync')));
+    await tester.pageBack();
+    await tester.pumpAndSettle();
 
     await _tap(tester, find.byKey(const ValueKey('turn-off-sync')));
     await _tap(tester, find.text('Turn off'));

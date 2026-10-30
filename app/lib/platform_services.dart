@@ -55,15 +55,21 @@ final class SecureBudgetKeyStore implements BudgetKeyStore {
 
   final FlutterSecureStorage _storage;
 
+  /// Where the key lives, next to nothing else.
+  static String _name(String budgetId) => 'budget-key:$budgetId';
+
   @override
   Future<BudgetKey> keyFor(String budgetId) async {
-    final name = 'budget-key:$budgetId';
-    final existing = await _storage.read(key: name);
+    final existing = await _storage.read(key: _name(budgetId));
     if (existing != null) return BudgetKey.fromHex(existing);
     final key = BudgetKey.generate();
-    await _storage.write(key: name, value: key.toHex());
+    await _storage.write(key: _name(budgetId), value: key.toHex());
     return key;
   }
+
+  @override
+  Future<void> writeKey(String budgetId, BudgetKey key) =>
+      _storage.write(key: _name(budgetId), value: key.toHex());
 }
 
 final class SecureDevicePrefs implements DevicePrefs {

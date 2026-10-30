@@ -1,9 +1,11 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../services.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'add_account_screen.dart';
+import 'join_screen.dart';
 
 /// First run (canvas: FirstRun). Nothing is written until the first account
 /// is saved.
@@ -108,9 +110,20 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 border: Border(top: BorderSide(color: Palette.cardBorder)),
               ),
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-              child: FilledButton(
-                onPressed: _addFirstAccount,
-                child: const Text('Add your first account'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                spacing: 4,
+                children: [
+                  FilledButton(
+                    onPressed: _addFirstAccount,
+                    child: const Text('Add your first account'),
+                  ),
+                  TextButton(
+                    key: const ValueKey('join-from-welcome'),
+                    onPressed: _join,
+                    child: const Text('Join a budget from another device'),
+                  ),
+                ],
               ),
             ),
           ],
@@ -129,6 +142,16 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       MaterialPageRoute<void>(
         builder: (_) =>
             AddAccountScreen(engine: widget.engine, newBudgetName: _name.text),
+      ),
+    );
+  }
+
+  /// A device with no budget yet can bring one in from a pairing code
+  /// instead of starting a new one (ticket 12).
+  void _join() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => JoinScreen(services: AppServicesScope.of(context)),
       ),
     );
   }

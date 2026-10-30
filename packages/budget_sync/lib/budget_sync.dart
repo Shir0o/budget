@@ -6,6 +6,8 @@ export 'src/drive.dart';
 export 'src/envelope.dart';
 export 'src/in_memory_drive.dart';
 export 'src/merge.dart';
+export 'src/pairing.dart';
+export 'src/recovery_phrase.dart';
 export 'src/segment.dart';
 export 'src/sync_book.dart';
 export 'src/sync_client.dart';
