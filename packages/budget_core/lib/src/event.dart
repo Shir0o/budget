@@ -66,7 +66,7 @@ abstract final class EventType {
 
   /// `{transactionId, accountId, date, payee, memo, cleared, amountCents,
   /// lines}`. Each line is `{lineId, amountCents, category, business,
-  /// businessTag, memo, reviewed}`, where `category` is
+  /// businessTag, memo, recipient?, reviewed}`, where `category` is
   /// [readyToAssignCategory] for income and null while uncategorized, and
   /// `business` is `personal`, `business` (with `businessTag`) or null.
   /// Events written before ticket 03 lack memo, cleared and the line's
@@ -83,6 +83,13 @@ abstract final class EventType {
   /// [transactionCreated]. Replaces the whole line set, so lines from two
   /// devices are never mixed (ticket 06).
   static const transactionSplitSet = 'TransactionSplitSet';
+
+  /// `{transactionId, lineId, category, business, businessTag, recipient}`,
+  /// with `business` and `businessTag` as on a line (null for a transfer
+  /// line) and `recipient` for a gift line. A person's values for one line,
+  /// which mark it Reviewed. Only a person may emit it (ADR 0003); replay
+  /// ignores it from any other actor.
+  static const reviewSet = 'ReviewSet';
 
   /// `{transactionId}`. Beats any concurrent edit (ticket 06).
   static const transactionDeleted = 'TransactionDeleted';

@@ -16,6 +16,7 @@ class LineDraft {
     this.category,
     this.business,
     this.memo = '',
+    this.recipient,
   });
 
   /// Starts from a saved line of a transaction going [outflow].
@@ -24,7 +25,8 @@ class LineDraft {
       amount = outflow ? -line.amount : line.amount,
       category = line.category,
       business = line.business,
-      memo = line.memo;
+      memo = line.memo,
+      recipient = line.recipient;
 
   final String? id;
   Money amount;
@@ -32,8 +34,17 @@ class LineDraft {
   BusinessStatus? business;
   String memo;
 
+  /// A gift line's recipient, kept through edits.
+  String? recipient;
+
   /// Whether saving it by hand marks it Reviewed.
-  bool get complete => category != null && isSet(business);
+  bool get complete =>
+      reviewNeed(
+        category: category,
+        business: business,
+        recipient: recipient,
+      ) ==
+      null;
 
   LineInput toInput({required bool outflow}) => LineInput(
     id: id,
@@ -41,6 +52,7 @@ class LineDraft {
     category: category,
     business: business,
     memo: memo,
+    recipient: recipient,
   );
 }
 
@@ -419,6 +431,7 @@ class _LineEditorState extends State<_LineEditor> {
         category: _category,
         business: _business,
         memo: _memo.text.trim(),
+        recipient: widget.line.recipient,
       ),
     ));
   }

@@ -11,6 +11,7 @@ import 'event_log.dart';
 import 'history.dart';
 import 'hlc.dart';
 import 'money.dart';
+import 'review.dart';
 import 'sensitive_numbers.dart';
 
 part 'engine_accounts.dart';
@@ -130,6 +131,7 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
             payee: 'Starting Balance',
             // It is the bank's balance on that date.
             cleared: ClearedStatus.cleared,
+            startingBalance: true,
           ),
       ]);
 
@@ -179,6 +181,9 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
 
     case CreateTransfer():
       return _createTransfer(command, state, stamp);
+
+    case ReviewLine():
+      return _reviewLine(command, state, stamp);
 
     case DeleteTransaction(:final transactionId):
       final transaction = state.transaction(transactionId);
@@ -312,6 +317,7 @@ Event _income(
   required CivilDate date,
   required String payee,
   ClearedStatus cleared = ClearedStatus.uncleared,
+  bool startingBalance = false,
 }) => stamp.event(EventType.transactionCreated, {
   'transactionId': newId(),
   'accountId': accountId,
@@ -321,10 +327,16 @@ Event _income(
   'cleared': cleared.name,
   'amountCents': amount.cents,
   'lines': [
-    _lineJson(
-      LineInput(amount: amount, category: readyToAssignCategory),
-      stamp.actor,
-    ),
+    {
+      ..._lineJson(
+        LineInput(amount: amount, category: readyToAssignCategory),
+        stamp.actor,
+      ),
+      // A Starting Balance is neither spending nor income, so it has no
+      // business status to choose. The person adding the account has
+      // already confirmed it, so it never enters the Review queue.
+      if (startingBalance) 'reviewed': stamp.actor.isPerson,
+    },
   ],
 });
 
@@ -360,23 +372,32 @@ Rejected? _checkLines(
       return const Rejected(Rejection.businessTagRequired);
     }
   }
-  return _checkText(lines.map((line) => line.memo));
+  return _checkText(lines.expand((line) => [line.memo, line.recipient]));
 }
 
-/// A stored line. It is Reviewed when a person set both its category and
-/// its business status (ticket 09, ADR 0003).
+/// A stored line. It is Reviewed when a person set everything
+/// [reviewNeed] asks for (ticket 09, ADR 0003).
 Map<String, Object?> _lineJson(LineInput line, Actor actor) {
   final business = switch (line.business) {
     Business(:final tag) => Business(tag.trim()),
     final other => other,
   };
+  final recipient = line.recipient?.trim();
   return {
     'lineId': line.id ?? newId(),
     'amountCents': line.amount.cents,
     'category': line.category,
     ...?business?.toJson(),
     'memo': line.memo.trim(),
-    'reviewed': actor.isPerson && line.category != null && business != null,
+    if (recipient != null && recipient.isNotEmpty) 'recipient': recipient,
+    'reviewed':
+        actor.isPerson &&
+        reviewNeed(
+              category: line.category,
+              business: business,
+              recipient: recipient,
+            ) ==
+            null,
   };
 }
 
@@ -387,6 +408,7 @@ LineInput _asInput(TransactionLine line) => LineInput(
   category: line.category,
   business: line.business,
   memo: line.memo,
+  recipient: line.recipient,
 );
 
 /// The stored form of a projected line, to tell whether an edit changed it.
@@ -396,8 +418,68 @@ Map<String, Object?> _storedLine(TransactionLine line) => {
   'category': line.category,
   ...?line.business?.toJson(),
   'memo': line.memo,
+  'recipient': ?line.recipient,
   'reviewed': line.reviewed,
 };
+
+CommandResult _reviewLine(ReviewLine command, BudgetState state, _Stamp stamp) {
+  if (!stamp.actor.isPerson) return const Rejected(Rejection.personRequired);
+  final transaction = state.transaction(command.transactionId);
+  if (transaction == null) {
+    return const Rejected(Rejection.unknownTransaction);
+  }
+  final line = transaction.lines
+      .where((line) => line.id == command.lineId)
+      .firstOrNull;
+  if (line == null) return const Rejected(Rejection.unknownLine);
+  // A transfer line keeps its Category, which only an edit that checks the
+  // transfer rules may change, and has no business status.
+  final category = transaction.isTransfer ? line.category : command.category;
+  final business = transaction.isTransfer
+      ? null
+      : switch (command.business) {
+          Business(:final tag) => Business(tag.trim()),
+          final other => other,
+        };
+  final recipient = business == const Business(giftsTag)
+      ? command.recipient?.trim()
+      : null;
+  switch (reviewNeed(
+    category: category,
+    business: business,
+    recipient: recipient,
+    transfer: transaction.isTransfer,
+  )) {
+    case ReviewNeed.category:
+      return const Rejected(Rejection.categoryRequired);
+    case ReviewNeed.businessStatus:
+      return const Rejected(Rejection.businessStatusRequired);
+    case ReviewNeed.businessTag:
+      return const Rejected(Rejection.businessTagRequired);
+    case ReviewNeed.recipient:
+      return const Rejected(Rejection.recipientRequired);
+    case null:
+  }
+  if (category != readyToAssignCategory && category != line.category) {
+    if (_checkActive(state, category!) case final rejected?) return rejected;
+  }
+  if (_checkText([recipient]) case final rejected?) return rejected;
+  if (line.reviewed &&
+      line.category == category &&
+      line.business == business &&
+      line.recipient == recipient) {
+    return const Rejected(Rejection.noChange);
+  }
+  return Accepted([
+    stamp.event(EventType.reviewSet, {
+      'transactionId': transaction.id,
+      'lineId': line.id,
+      'category': category,
+      ...?business?.toJson(),
+      'recipient': ?recipient,
+    }),
+  ]);
+}
 
 CommandResult _editTransaction(
   EditTransaction command,
