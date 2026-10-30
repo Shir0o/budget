@@ -13,6 +13,7 @@ import 'history.dart';
 import 'hlc.dart';
 import 'import_batch.dart';
 import 'money.dart';
+import 'redact_field.dart';
 import 'review.dart';
 import 'sensitive_numbers.dart';
 import 'target.dart';
@@ -20,6 +21,7 @@ import 'target.dart';
 part 'engine_accounts.dart';
 part 'engine_bank_sync.dart';
 part 'engine_import.dart';
+part 'engine_redact.dart';
 part 'engine_schedules.dart';
 part 'engine_targets.dart';
 
@@ -76,14 +78,51 @@ final class BudgetEngine {
         if (known.add(event.id)) event,
     ]..sort((a, b) => a.hlc.compareTo(b.hlc));
     if (added.isEmpty) return const [];
-    _log.append(added);
+    // Redaction is the one rewrite of the log (ticket 11). Every Redacted
+    // Event this device knows, and any arriving now, replaces the values it
+    // names before an Event lands, so the old value never sits in this
+    // store even for a moment.
+    final targets = {
+      for (final event in _events)
+        if (event.type == EventType.redacted && event.actor.isPerson)
+          ...redactTargets(event),
+      for (final event in added)
+        if (event.type == EventType.redacted && event.actor.isPerson)
+          ...redactTargets(event),
+    };
+    final arrived = [
+      for (final event in added) redactedEvent(event, targets) ?? event,
+    ]..sort((a, b) => a.hlc.compareTo(b.hlc));
+    _log.append(arrived);
     _events
-      ..addAll(added)
+      ..addAll(arrived)
       ..sort((a, b) => a.hlc.compareTo(b.hlc));
+    _rewriteRedacted(targets);
     _state = BudgetState.replay(_events);
     _history = null;
     _clock.last = _events.last.hlc;
-    return added;
+    return arrived;
+  }
+
+  /// Replaces every value [targets] name in this log, in memory and in the
+  /// store, leaving the rest alone.
+  void _rewriteRedacted(Set<RedactTarget> targets) {
+    if (targets.isEmpty) return;
+    final rewritten = [
+      for (final event in _events) ?redactedEvent(event, targets),
+    ];
+    if (rewritten.isEmpty) return;
+    _log.rewrite(rewritten);
+    _replaceEvents(rewritten);
+  }
+
+  /// Puts already-rewritten Events in place of the ones with the same ids.
+  void _replaceEvents(List<Event> events) {
+    final byId = {for (final event in events) event.id: event};
+    for (var i = 0; i < _events.length; i++) {
+      final rewritten = byId[_events[i].id];
+      if (rewritten != null) _events[i] = rewritten;
+    }
   }
 
   /// Change History as of the latest Event (ticket 11).
@@ -348,6 +387,8 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
         for (final (type, payload) in compensation.events)
           stamp.event(type, payload, actor: Actor.revert),
       ]);
+    case RedactField(:final targets):
+      return _redact(targets, stamp);
     case SetTarget():
       return _setTarget(command, state, stamp);
     case ClearTarget():

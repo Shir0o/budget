@@ -11,6 +11,7 @@ final class SyncBook {
     this.snapshottedEvents = 0,
     this.devices = 0,
     this.lastSync,
+    this.rewrittenFor = const {},
   });
 
   /// Sync is off by default (ADR 0002).
@@ -33,6 +34,11 @@ final class SyncBook {
   /// When the last run finished on this device.
   final DateTime? lastSync;
 
+  /// The `Redacted` Events this device has already published its own folder
+  /// again for (ticket 11). A redaction rewrites Events already uploaded, so
+  /// the old files must go; this remembers which ones it has done.
+  final Set<String> rewrittenFor;
+
   SyncBook copyWith({bool? enabled}) => SyncBook(
     enabled: enabled ?? this.enabled,
     uploadedEvents: uploadedEvents,
@@ -40,6 +46,7 @@ final class SyncBook {
     snapshottedEvents: snapshottedEvents,
     devices: devices,
     lastSync: lastSync,
+    rewrittenFor: rewrittenFor,
   );
 
   Map<String, Object?> toJson() => {
@@ -50,6 +57,7 @@ final class SyncBook {
     'devices': devices,
     if (lastSync case final lastSync?)
       'lastSync': lastSync.millisecondsSinceEpoch,
+    if (rewrittenFor.isNotEmpty) 'rewrittenFor': rewrittenFor.toList(),
   };
 
   factory SyncBook.fromJson(Map<String, Object?> json) => SyncBook(
@@ -61,6 +69,10 @@ final class SyncBook {
     lastSync: switch (json['lastSync']) {
       final int ms => DateTime.fromMillisecondsSinceEpoch(ms),
       _ => null,
+    },
+    rewrittenFor: switch (json['rewrittenFor']) {
+      final List<Object?> ids => {for (final id in ids) id as String},
+      _ => const {},
     },
   );
 }

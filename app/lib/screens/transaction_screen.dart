@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'history_screen.dart';
+import 'redact_screen.dart';
 import 'transaction_parts.dart';
 
 /// One transaction (canvas: Transaction): payee, date, account, amount and
@@ -194,6 +195,19 @@ class _TransactionScreenState extends State<TransactionScreen> {
     }
   }
 
+  Future<void> _openRedact() async {
+    final redacted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => RedactScreen(
+          engine: widget.engine,
+          entity: EntityRef.transaction(widget.transactionId),
+        ),
+      ),
+    );
+    // The values on this screen were rewritten, so go back to the register.
+    if (redacted == true && mounted) Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = _state;
@@ -218,6 +232,10 @@ class _TransactionScreenState extends State<TransactionScreen> {
                   icon: const Icon(Icons.more_vert, color: Palette.muted),
                   onSelected: (action) => action(),
                   itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: _openRedact,
+                      child: const Text('Redact a field'),
+                    ),
                     PopupMenuItem(
                       value: _delete,
                       child: const Text('Delete transaction'),

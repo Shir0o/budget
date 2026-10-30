@@ -32,6 +32,7 @@ export 'src/history.dart';
 export 'src/hlc.dart';
 export 'src/import_batch.dart';
 export 'src/money.dart';
+export 'src/redact_field.dart';
 export 'src/redaction.dart';
 export 'src/review.dart';
 export 'src/sensitive_numbers.dart';
