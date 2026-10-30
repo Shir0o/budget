@@ -296,6 +296,111 @@ void main() {
     );
   });
 
+  group('Redaction', () {
+    test('converges, and no device keeps the value in Drive', () async {
+      final bistroId = _byPayee(a, 'Corner Bistro').id;
+
+      // The phone has an edit of its own, so both logs hold the value.
+      b.clock.ms = 2000;
+      b.engine.execute(
+        EditTransaction(transactionId: bistroId, memo: 'Lunch with Sam'),
+      );
+      await sync(b);
+      await sync(a);
+
+      // The Mac redacts the payee and the memo, as a person would.
+      a.clock.ms = 3000;
+      final result = a.engine.execute(
+        RedactField(
+          targets: [
+            RedactTarget(EntityRef.transaction(bistroId), 'payee'),
+            RedactTarget(EntityRef.transaction(bistroId), 'memo'),
+          ],
+        ),
+      );
+      expect(result, isA<Accepted>());
+      expect(a.engine.state.transaction(bistroId)!.payee, redactedValue);
+
+      // Both devices sync, and converge on the same log and projection.
+      await sync(a);
+      await sync(b);
+      await sync(a);
+
+      for (final device in [a, b]) {
+        final transaction = device.engine.state.transaction(bistroId)!;
+        expect(transaction.payee, redactedValue);
+        expect(transaction.memo, redactedValue);
+        final log = [
+          for (final event in device.engine.events) jsonEncode(event.toJson()),
+        ].join();
+        expect(log, isNot(contains('Corner Bistro')));
+        expect(log, isNot(contains('Lunch with Sam')));
+
+        // It can't be reverted on either device.
+        final audit = device.engine.events.firstWhere(
+          (event) => event.type == EventType.redacted,
+        );
+        expect(
+          device.engine.history.planRevert(audit.groupId)!.rejection,
+          Rejection.cannotRevert,
+        );
+      }
+      expect(
+        stateJson(b.engine.state, month: _november),
+        stateJson(a.engine.state, month: _november),
+      );
+
+      // No published file still holds the value, snapshots included.
+      for (final folder in ['device-a', 'device-b']) {
+        for (final name in drive.filesAt([budgetId, folder])) {
+          final body = await SealedFile.open(
+            name: '$budgetId/$folder/$name',
+            file: drive.readBytes(path: [budgetId, folder], name: name)!,
+            key: key,
+          );
+          final text = jsonEncode(body);
+          expect(
+            text,
+            isNot(contains('Corner Bistro')),
+            reason: '$folder/$name',
+          );
+          expect(
+            text,
+            isNot(contains('Lunch with Sam')),
+            reason: '$folder/$name',
+          );
+        }
+      }
+    });
+
+    test('a device that pairs later gets the redacted value', () async {
+      final bistroId = _byPayee(a, 'Corner Bistro').id;
+      a.clock.ms = 2000;
+      a.engine.execute(
+        RedactField(
+          targets: [RedactTarget(EntityRef.transaction(bistroId), 'payee')],
+        ),
+      );
+      await sync(a);
+
+      final joined = await client.join(budgetId: budgetId, key: key);
+      expect(joined.error, isNull);
+      final fresh = BudgetEngine(
+        log: InMemoryEventLog()..append(joined.events),
+        deviceId: 'device-c',
+        actor: Actor.userAndroid,
+      );
+      expect(fresh.state.transaction(bistroId)!.payee, redactedValue);
+      expect(
+        joined.events
+            .map((event) => jsonEncode(event.toJson()))
+            .join()
+            .contains('Corner Bistro'),
+        isFalse,
+      );
+    });
+  });
+
   group('Drive layout', () {
     test('each device writes only its own folder, and names are ids', () async {
       final macFolder = drive.folderAt([budgetId, 'device-a']);

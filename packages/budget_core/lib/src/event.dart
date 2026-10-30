@@ -54,6 +54,19 @@ final class Event {
     'type': type,
     'payload': payload,
   };
+
+  /// The same Event with [payload], as a redaction rewrites it (ticket 11).
+  /// Everything that orders or attributes it stays as it was.
+  Event withPayload(Map<String, Object?> payload) => Event(
+    id: id,
+    budgetId: budgetId,
+    deviceId: deviceId,
+    hlc: hlc,
+    actor: actor,
+    groupId: groupId,
+    type: type,
+    payload: payload,
+  );
 }
 
 /// Event types. More arrive with later tickets (see ticket 06 for the list).
@@ -155,6 +168,13 @@ abstract final class EventType {
   /// `date` is the `YYYY-MM-DD` restored to, as of its end, and `by` is the
   /// Actor who asked. It changes no state.
   static const restoredToDate = 'RestoredToDate';
+
+  /// `{targets, eventIds, by}`: a redaction, the one exception to
+  /// immutability (ticket 11). Each target is `{entity, id, field}` with
+  /// `lineId` for a line memo, and `eventIds` are the Events whose values
+  /// were replaced with `[redacted]` in this log. `by` is the person who
+  /// asked. It records no value, changes no state, and can't be reverted.
+  static const redacted = 'Redacted';
 
   // Targets and automation (ticket 08).
 

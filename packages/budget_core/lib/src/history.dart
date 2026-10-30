@@ -5,6 +5,7 @@ import 'event.dart';
 import 'event_effects.dart';
 import 'hlc.dart';
 import 'money.dart';
+import 'redact_field.dart';
 import 'target.dart';
 
 part 'history_restore.dart';
@@ -38,6 +39,7 @@ final class HistoryEntry {
     required this.events,
     required this.summary,
     required this.changes,
+    required this.entity,
     required this.entities,
     required this.reverts,
     required this.by,
@@ -56,6 +58,11 @@ final class HistoryEntry {
 
   /// Before and after values, in Event order.
   final List<HistoryChange> changes;
+
+  /// What the group mainly changed: the first Event's first effect, or the
+  /// first thing it refers to. Null for an Event type this version doesn't
+  /// know and that refers to nothing.
+  final EntityRef? entity;
 
   /// Everything the group touched, for per-entity history: what it changed,
   /// what it refers to, and a transaction's account and Categories.
@@ -305,7 +312,12 @@ final class ChangeHistory {
     );
     final spec = eventSpecs[event.type];
     if (spec == null) {
-      final record = _Record(event, null, const {}, const {});
+      // A redaction names the entities it rewrote but changes no state
+      // (ticket 11), so per-entity history still lists it.
+      final references = event.type == EventType.redacted
+          ? {for (final target in redactTargets(event)) target.entity}
+          : const <EntityRef>{};
+      final record = _Record(event, null, references, const {});
       group.records.add(record);
       _records.add(record);
       return;
@@ -399,6 +411,7 @@ final class ChangeHistory {
         .firstOrNull;
     final marker = find(EventType.groupReverted);
     final restore = find(EventType.restoredToDate);
+    final redacted = find(EventType.redacted);
     final reverts = [
       ...?(marker?.payload['groupIds'] as List?)?.cast<String>(),
     ];
@@ -412,22 +425,54 @@ final class ChangeHistory {
     return HistoryEntry._(
       groupId: group.id,
       events: [for (final record in group.records) record.event],
-      summary: restore != null
+      summary: redacted != null
+          ? _redactedSummary(redacted)
+          : restore != null
           ? 'Restored to ${_date(restore.payload['date'] as String)}'
           : reverts.isEmpty
           ? _summarize(group, described)
           : '${undo ? 'Undid' : 'Redid'} “${target?.summary ?? 'a change'}”'
                 '${_more(reverts.length - 1, 'later change')}',
-      changes: [for (final d in described) ...d.changes],
+      changes: [
+        for (final d in described) ...d.changes,
+        if (redacted != null) ..._redactedChanges(redacted),
+      ],
+      entity:
+          group.records.first.applied?.firstOrNull?.effect.entity ??
+          group.records.first.entities.firstOrNull,
       entities: entities,
       reverts: reverts,
-      by: switch ((marker ?? restore)?.payload['by']) {
+      by: switch ((marker ?? restore ?? redacted)?.payload['by']) {
         final String by => Actor.fromValue(by),
         _ => null,
       },
       canRevert: canRevert,
       isRedo: reverts.isNotEmpty && !undo,
     );
+  }
+
+  /// `Redacted the memo of “Corner Bistro −48.20”`, never the value.
+  String _redactedSummary(Event event) {
+    final targets = redactTargets(event);
+    final entities = {for (final target in targets) target.entity};
+    final fields = [for (final target in targets) _redactField(target)];
+    final what = fields.length == 1 ? fields.single : '${fields.length} fields';
+    if (entities.length != 1) return 'Redacted $what';
+    final label = _label(entities.single, _values[entities.single] ?? const {});
+    return 'Redacted $what of $label';
+  }
+
+  /// What a redaction replaced, and how many Events it touched (ticket 11).
+  List<HistoryChange> _redactedChanges(Event event) {
+    final eventIds = (event.payload['eventIds'] as List).cast<String>();
+    return [
+      for (final target in redactTargets(event))
+        HistoryChange(_redactFieldName(target), after: redactedValue),
+      HistoryChange(
+        'Events',
+        after: '${eventIds.length} Event${eventIds.length == 1 ? '' : 's'}',
+      ),
+    ];
   }
 
   /// The original change at the end of a chain of reverts, and whether
@@ -1018,6 +1063,22 @@ String _fieldName(String field) => switch (field) {
   'bankId' => 'Bank link',
   'pendingMatch' => 'Possible bank match',
   _ => '${field[0].toUpperCase()}${field.substring(1)}',
+};
+
+/// A redacted field as a change line names it: `Payee`, `Line memo`.
+String _redactFieldName(RedactTarget target) => switch (target.field) {
+  'payee' => 'Payee',
+  'memo' => 'Memo',
+  'lineMemo' => 'Line memo',
+  _ => 'Name',
+};
+
+/// A redacted field as a summary names it: `the payee`, `the line memo`.
+String _redactField(RedactTarget target) => switch (target.field) {
+  'payee' => 'the payee',
+  'memo' => 'the memo',
+  'lineMemo' => 'the line memo',
+  _ => 'the name',
 };
 
 /// `payee, date and memo`.
