@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../widgets.dart';
+import 'possible_match_screen.dart';
 import 'transaction_parts.dart';
 
 /// The Business Tags shown before "All tags" (canvas: Review).
@@ -74,11 +75,21 @@ class _ReviewScreenState extends State<ReviewScreen> {
     });
   }
 
+  Future<void> _openPossibleMatches() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PossibleMatchScreen(engine: widget.engine),
+      ),
+    );
+    setState(() {}); // The engine's state may have changed.
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = widget.engine.state;
     final queue = state.reviewQueue;
     final attention = needsAttention(state);
+    final matches = state.proposedMatches;
     final item = queue.firstOrNull;
     if (item != null) _load(item);
     return Scaffold(
@@ -124,6 +135,13 @@ class _ReviewScreenState extends State<ReviewScreen> {
             ),
             if (attention.isNotEmpty) ...[
               _NeedsAttention(items: attention),
+              const SizedBox(height: 12),
+            ],
+            if (matches.isNotEmpty) ...[
+              _PossibleMatches(
+                count: matches.length,
+                onTap: _openPossibleMatches,
+              ),
               const SizedBox(height: 12),
             ],
             if (item == null)
@@ -555,6 +573,64 @@ class _UpNext extends StatelessWidget {
             ),
           ),
       ],
+    ),
+  );
+}
+
+/// Bank charges that look like a line someone entered by hand (ticket 10,
+/// step 4). Tapping opens Possible match; nothing is decided here.
+class _PossibleMatches extends StatelessWidget {
+  const _PossibleMatches({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => CardBox(
+    padding: EdgeInsets.zero,
+    child: Semantics(
+      button: true,
+      child: InkWell(
+        key: const ValueKey('review-possible-matches'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 56),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            spacing: 12,
+            children: [
+              const Icon(
+                Icons.compare_arrows,
+                size: 20,
+                color: Palette.bankText,
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 2,
+                  children: [
+                    Text(
+                      count == 1
+                          ? '1 possible bank match'
+                          : '$count possible bank matches',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const Text(
+                      'A bank charge looks like one of your lines',
+                      style: TextStyle(fontSize: 12, color: Palette.muted),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 18, color: Palette.muted),
+            ],
+          ),
+        ),
+      ),
     ),
   );
 }

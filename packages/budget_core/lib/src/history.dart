@@ -910,6 +910,8 @@ final class ChangeHistory {
       _ when field.startsWith(businessUseField) => '$value%',
       priorityField => '${(value as List).length} Categories in order',
       deletedField => value == true ? 'Deleted' : 'Kept',
+      'bankId' => 'Linked',
+      'pendingMatch' => 'Possible match',
       _ => '$value',
     };
   }
@@ -1013,6 +1015,8 @@ String _fieldName(String field) => switch (field) {
   'amountCents' => 'Amount',
   'nextDue' => 'Next due',
   'accountId' => 'Account',
+  'bankId' => 'Bank link',
+  'pendingMatch' => 'Possible bank match',
   _ => '${field[0].toUpperCase()}${field.substring(1)}',
 };
 

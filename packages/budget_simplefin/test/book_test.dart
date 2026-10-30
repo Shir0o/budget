@@ -145,6 +145,66 @@ void main() {
     });
   });
 
+  group('balances', () {
+    test('a fetch keeps each linked account’s balance for the check', () {
+      final book = SimpleFinBook(
+        links: [
+          _link(),
+          _link(simpleFinId: 'acct-2', accountId: 'app-2'),
+        ],
+      );
+
+      final recorded = book.recordedBalances(
+        FetchResult(accounts: [_claimed()], errors: const []),
+      );
+
+      expect(recorded.linkFor('acct-1')!.bankBalance, const Money(100000));
+      expect(recorded.linkFor('acct-1')!.balanceDate, _today);
+      // The fetch no longer reports the other account, so it has no balance
+      // to compare.
+      expect(recorded.linkFor('acct-2')!.bankBalance, isNull);
+      // The JSON round trip keeps it.
+      final restored = SimpleFinBook.fromJson(recorded.toJson());
+      expect(restored.linkFor('acct-1')!.bankBalance, const Money(100000));
+      expect(restored.linkFor('acct-1')!.balanceDate, _today);
+    });
+
+    test('an account is a discrepancy only when the bank disagrees', () {
+      BudgetState budget(int cents) {
+        final log = InMemoryEventLog();
+        final engine = BudgetEngine(
+          log: log,
+          deviceId: 'device-a',
+          actor: Actor.userAndroid,
+        );
+        engine.execute(const CreateBudget(name: 'Home'));
+        engine.execute(
+          AddAccount(
+            name: 'Checking',
+            type: AccountType.checking,
+            startingBalance: Money(cents),
+            asOf: _today,
+          ),
+        );
+        return engine.state;
+      }
+
+      SimpleFinBook bookFor(BudgetState state) => SimpleFinBook(
+        links: [_link(accountId: state.accounts.single.id)],
+      ).recordedBalances(FetchResult(accounts: [_claimed()], errors: const []));
+
+      final agreeing = budget(100000);
+      expect(bookFor(agreeing).discrepancies(agreeing), isEmpty);
+
+      final behind = budget(40000);
+      final discrepancy = bookFor(behind).discrepancies(behind).values.single;
+      expect(discrepancy.bankBalance, const Money(100000));
+      expect(discrepancy.appBalance, const Money(40000));
+      expect(discrepancy.difference, const Money(60000));
+      expect(discrepancy.date, _today);
+    });
+  });
+
   group('bankEntries', () {
     test('keeps linked accounts and drops bank history before linked-from', () {
       final book = SimpleFinBook(
@@ -190,6 +250,25 @@ void main() {
       );
 
       expect(bankEntries(const SimpleFinBook(), result), isEmpty);
+    });
+
+    test('says which app accounts the fetch covered', () {
+      final book = SimpleFinBook(
+        links: [
+          _link(),
+          _link(simpleFinId: 'acct-2', accountId: null),
+        ],
+      );
+      final result = FetchResult(
+        accounts: [
+          _claimed(),
+          _claimed(id: 'acct-2'),
+          _claimed(id: 'acct-3'),
+        ],
+        errors: const [],
+      );
+
+      expect(fetchedAccountIds(book, result), ['app-1']);
     });
   });
 

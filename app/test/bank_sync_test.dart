@@ -162,6 +162,11 @@ void main() {
     expect(bank.payee, 'Corner Bistro');
     expect(bank.lines.single.reviewed, isFalse);
     expect(bank.lines.single.category, isNull);
+    // The fetch keeps the bank's balance, so the account can show a
+    // discrepancy badge (ticket 10).
+    final fetched = await services.prefs.readSimpleFinBook();
+    expect(fetched.linkFor('acct-1')!.bankBalance, const Money(123456));
+    expect(fetched.linkFor('acct-1')!.balanceDate, today());
   });
 
   testWidgets('a reviewed line whose amount changed shows the bank note', (

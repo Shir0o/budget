@@ -131,6 +131,53 @@ final class Business extends BusinessStatus {
 /// A transaction's cleared status (ticket 09).
 enum ClearedStatus { uncleared, cleared, reconciled }
 
+/// A bank charge that looks like a line entered by hand or from a schedule
+/// (ticket 10, step 4). It waits on the transaction it might be, in
+/// [Transaction.pendingMatch], and changes nothing until a person confirms
+/// it: neither the amount nor the balance moves.
+final class ProposedMatch {
+  const ProposedMatch({
+    required this.bankId,
+    required this.date,
+    required this.amount,
+    required this.description,
+    this.memo = '',
+    this.pending = false,
+  });
+
+  factory ProposedMatch.fromJson(Map<String, Object?> json) => ProposedMatch(
+    bankId: json['bankId'] as String,
+    date: CivilDate.parse(json['date'] as String),
+    amount: Money(json['amountCents'] as int),
+    description: json['description'] as String? ?? '',
+    memo: json['memo'] as String? ?? '',
+    pending: json['pending'] as bool? ?? false,
+  );
+
+  /// The bank's id for the charge, which a confirmed match links.
+  final String bankId;
+
+  final CivilDate date;
+
+  /// Negative for an outflow. The line's amount is exactly this, which is
+  /// what makes it look like the same charge.
+  final Money amount;
+
+  /// What the bank calls the payee.
+  final String description;
+  final String memo;
+  final bool pending;
+
+  Map<String, Object?> toJson() => {
+    'bankId': bankId,
+    'date': date.toIso(),
+    'amountCents': amount.cents,
+    'description': description,
+    'memo': memo,
+    'pending': pending,
+  };
+}
+
 final class TransactionLine {
   const TransactionLine({
     required this.id,
@@ -167,6 +214,10 @@ final class TransactionLine {
   final bool reviewed;
 }
 
+/// Marks a [_copyWith] argument that isn't given, so a null can clear a
+/// field that is otherwise left alone.
+const _unchanged = Object();
+
 final class Transaction {
   const Transaction({
     required this.id,
@@ -182,6 +233,7 @@ final class Transaction {
     this.startingBalance = false,
     this.bankId,
     this.importedCategory,
+    this.pendingMatch,
   });
 
   final String id;
@@ -208,6 +260,11 @@ final class Transaction {
   /// to Ready to Assign (ticket 14). Read-only metadata; null otherwise.
   final String? importedCategory;
 
+  /// A bank charge that looks like this line, waiting on a person to
+  /// confirm or reject it (ticket 10, step 4). Nothing merges until they
+  /// do, and it changes no amount.
+  final ProposedMatch? pendingMatch;
+
   bool get isTransfer => transferTransactionId != null;
 
   /// Negative for an outflow. Always the sum of [lines].
@@ -224,6 +281,8 @@ final class Transaction {
     ClearedStatus? cleared,
     Money? amount,
     List<TransactionLine>? lines,
+    Object? bankId = _unchanged,
+    Object? pendingMatch = _unchanged,
   }) => Transaction(
     id: id,
     accountId: accountId,
@@ -236,8 +295,11 @@ final class Transaction {
     transferAccountId: transferAccountId,
     transferTransactionId: transferTransactionId,
     startingBalance: startingBalance,
-    bankId: bankId,
+    bankId: identical(bankId, _unchanged) ? this.bankId : bankId as String?,
     importedCategory: importedCategory,
+    pendingMatch: identical(pendingMatch, _unchanged)
+        ? this.pendingMatch
+        : pendingMatch as ProposedMatch?,
   );
 }
 
@@ -516,6 +578,14 @@ final class BudgetState {
           cleared: cleared == null
               ? null
               : ClearedStatus.values.byName(cleared),
+          bankId: fields.containsKey('bankId') ? fields['bankId'] : _unchanged,
+          pendingMatch: switch (fields['pendingMatch']) {
+            final Map match => ProposedMatch.fromJson(
+              match.cast<String, Object?>(),
+            ),
+            _ when fields.containsKey('pendingMatch') => null,
+            _ => _unchanged,
+          },
         );
       case EventType.transactionSplitSet:
         final id = p['transactionId'] as String;

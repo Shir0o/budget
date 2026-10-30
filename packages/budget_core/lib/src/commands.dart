@@ -425,13 +425,45 @@ final class EnterSchedule extends Command {
 }
 
 /// Applies one bank fetch (ticket 10) as one Event group with actor
-/// `bank-sync`: a same SimpleFIN id updates its transaction in place, and
-/// anything new becomes an Unreviewed line. A Reviewed line whose amount
-/// changed returns to Review with the note [bankChangeNote].
+/// `bank-sync`: a same SimpleFIN id updates its transaction in place, a
+/// pending charge posted under a new id replaces it, a line entered by hand
+/// that looks like the charge waits on [ConfirmBankMatch] or
+/// [RejectBankMatch], a pending charge the feed no longer has after
+/// [bankDropAfterDays] is dropped, and anything new becomes an Unreviewed
+/// line. A Reviewed line whose amount changed returns to Review with the
+/// note [bankChangeNote].
 final class ImportBankTransactions extends Command {
-  const ImportBankTransactions({required this.entries});
+  const ImportBankTransactions({
+    required this.entries,
+    this.fetchedAccounts = const [],
+  });
 
   final List<BankEntry> entries;
+
+  /// The app accounts this fetch covered. Only their pending charges can be
+  /// dropped when the feed no longer has them (ticket 10, step 3).
+  final List<String> fetchedAccounts;
+}
+
+/// A person confirms that a bank charge is a line they entered by hand
+/// (ticket 10, step 4). The line keeps its Category, business status, memo
+/// and amount, and takes the bank's id, date and cleared state so later
+/// fetches update it in place.
+final class ConfirmBankMatch extends Command {
+  const ConfirmBankMatch({required this.transactionId});
+
+  /// The transaction [Transaction.pendingMatch] sits on.
+  final String transactionId;
+}
+
+/// A person says a bank charge is not the line it looked like (ticket 10,
+/// step 4). The transaction stays as it is, and the charge becomes a new
+/// Unreviewed transaction.
+final class RejectBankMatch extends Command {
+  const RejectBankMatch({required this.transactionId});
+
+  /// The transaction [Transaction.pendingMatch] sits on.
+  final String transactionId;
 }
 
 // Migration (ticket 14).
@@ -577,6 +609,14 @@ enum Rejection {
 
   /// [ReviewLine] of a line id the transaction doesn't have.
   unknownLine,
+
+  /// [ConfirmBankMatch] or [RejectBankMatch] of a transaction that isn't
+  /// waiting on a possible bank match.
+  noProposedMatch,
+
+  /// [ConfirmBankMatch] of a line whose amount someone has changed since the
+  /// match was offered, so it is no longer the same money movement.
+  matchAmountChanged,
 
   /// [ReviewLine] without a Category.
   categoryRequired,

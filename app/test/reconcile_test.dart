@@ -1,6 +1,8 @@
 import 'package:budget/app.dart';
+import 'package:budget/services.dart';
 import 'package:budget/widgets.dart';
 import 'package:budget_core/budget_core.dart';
+import 'package:budget_simplefin/budget_simplefin.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -143,4 +145,34 @@ void main() {
     await _tap(tester, find.text('Change it'));
     expect(find.text('Transaction'), findsNothing);
   });
+
+  testWidgets(
+    'a bank balance that differs shows a badge that opens Reconcile',
+    (tester) async {
+      final seed = _Seed();
+      final services = AppServices.inMemory();
+      await services.prefs.writeSimpleFinBook(
+        SimpleFinBook(
+          links: [
+            LinkedAccount(
+              simpleFinId: 'acct-1',
+              institution: 'Sample Bank',
+              name: 'Checking ...1234',
+              linkedFrom: today().addDays(-30),
+              accountId: seed.state.accounts.single.id,
+              bankBalance: const Money(52000),
+              balanceDate: today(),
+            ),
+          ],
+        ),
+      );
+      await _pump(tester, BudgetApp(engine: seed.engine, services: services));
+      await _tap(tester, find.text('Accounts'));
+
+      expect(find.text('Bank differs +40.00'), findsOneWidget);
+      await _tap(tester, find.byKey(const ValueKey('account-discrepancy')));
+
+      expect(find.text('Reconcile Checking'), findsOneWidget);
+    },
+  );
 }

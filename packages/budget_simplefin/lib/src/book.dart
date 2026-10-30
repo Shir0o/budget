@@ -18,6 +18,8 @@ final class LinkedAccount {
     required this.name,
     required this.linkedFrom,
     this.accountId,
+    this.bankBalance,
+    this.balanceDate,
   });
 
   factory LinkedAccount.fromJson(Map<String, Object?> json) => LinkedAccount(
@@ -26,6 +28,14 @@ final class LinkedAccount {
     name: json['name'] as String? ?? '',
     linkedFrom: CivilDate.parse(json['linkedFrom'] as String),
     accountId: json['accountId'] as String?,
+    bankBalance: switch (json['bankBalanceCents']) {
+      final int cents => Money(cents),
+      _ => null,
+    },
+    balanceDate: switch (json['balanceDate']) {
+      final String iso => CivilDate.parse(iso),
+      _ => null,
+    },
   );
 
   /// The bank's id for the account.
@@ -42,7 +52,36 @@ final class LinkedAccount {
   /// The app account it feeds. Null means ignored.
   final String? accountId;
 
+  /// The balance the last fetch reported for it, or null before one. The
+  /// app compares it with its own balance and shows a badge when they
+  /// differ (ticket 10).
+  final Money? bankBalance;
+
+  /// The day [bankBalance] was for.
+  final CivilDate? balanceDate;
+
   bool get ignored => accountId == null;
+
+  /// This link with the bank's balance from a fetch.
+  LinkedAccount withBalance(Money balance, CivilDate date) => LinkedAccount(
+    simpleFinId: simpleFinId,
+    institution: institution,
+    name: name,
+    linkedFrom: linkedFrom,
+    accountId: accountId,
+    bankBalance: balance,
+    balanceDate: date,
+  );
+
+  /// This link without a bank balance: before the first fetch, or when the
+  /// bank no longer reports the account.
+  LinkedAccount withoutBalance() => LinkedAccount(
+    simpleFinId: simpleFinId,
+    institution: institution,
+    name: name,
+    linkedFrom: linkedFrom,
+    accountId: accountId,
+  );
 
   Map<String, Object?> toJson() => {
     'simpleFinId': simpleFinId,
@@ -50,6 +89,8 @@ final class LinkedAccount {
     'name': name,
     'linkedFrom': linkedFrom.toIso(),
     'accountId': accountId,
+    'bankBalanceCents': bankBalance?.cents,
+    'balanceDate': balanceDate?.toIso(),
   };
 
   @override
@@ -59,11 +100,20 @@ final class LinkedAccount {
       other.institution == institution &&
       other.name == name &&
       other.linkedFrom == linkedFrom &&
-      other.accountId == accountId;
+      other.accountId == accountId &&
+      other.bankBalance == bankBalance &&
+      other.balanceDate == balanceDate;
 
   @override
-  int get hashCode =>
-      Object.hash(simpleFinId, institution, name, linkedFrom, accountId);
+  int get hashCode => Object.hash(
+    simpleFinId,
+    institution,
+    name,
+    linkedFrom,
+    accountId,
+    bankBalance,
+    balanceDate,
+  );
 }
 
 /// How many fetches this device has made on [day] (ticket 10). The hard cap
@@ -216,6 +266,47 @@ final class SimpleFinBook {
     lastFetch: today,
   );
 
+  /// This book with the balance [result] reported for each linked account,
+  /// so the app can compare it with its own (ticket 10). An account the
+  /// fetch didn't return has none to compare.
+  SimpleFinBook recordedBalances(FetchResult result) => SimpleFinBook(
+    accessUrl: accessUrl,
+    links: [
+      for (final link in links)
+        switch (result.accounts
+            .where((account) => account.id == link.simpleFinId)
+            .firstOrNull) {
+          final account? => link.withBalance(
+            account.balance,
+            account.balanceDate,
+          ),
+          _ => link.withoutBalance(),
+        },
+    ],
+    requests: requests,
+    lastFetch: lastFetch,
+  );
+
+  /// Each linked account whose bank balance differs from the app's (cleared
+  /// plus uncleared, pending included), by app account id (ticket 10).
+  Map<String, Discrepancy> discrepancies(BudgetState state) {
+    final found = <String, Discrepancy>{};
+    for (final link in links) {
+      final accountId = link.accountId;
+      final balance = link.bankBalance;
+      final date = link.balanceDate;
+      if (accountId == null || balance == null || date == null) continue;
+      final discrepancy = balanceDiscrepancy(
+        state: state,
+        accountId: accountId,
+        bankBalance: balance,
+        date: date,
+      );
+      if (discrepancy != null) found[accountId] = discrepancy;
+    }
+    return found;
+  }
+
   /// The window one fetch asks for: at most 90 days back, never before the
   /// earliest linked-from date, and re-reading the 10 days before the last
   /// successful fetch (ticket 10).
@@ -277,6 +368,12 @@ List<BankEntry> bankEntries(SimpleFinBook book, FetchResult result) {
   }
   return entries;
 }
+
+/// The app accounts [result] covered, so a fetch can drop a pending charge
+/// the bank no longer reports (ticket 10, step 3).
+List<String> fetchedAccountIds(SimpleFinBook book, FetchResult result) => [
+  for (final account in result.accounts) ?book.linkFor(account.id)?.accountId,
+];
 
 /// The linked-from date a new link starts at: the day after the app
 /// account's newest transaction, so history already in the budget isn't
