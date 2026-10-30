@@ -77,8 +77,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _openPhrase() async {
     final budget = widget.engine.state.budget;
     if (budget == null) return;
-    final key = await widget.services.keys.keyFor(budget.id);
+    final key = await widget.services.keys.existingKey(budget.id);
     if (!mounted) return;
+    if (key == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No recovery phrase yet. Turn on Encrypted sync to create one.',
+          ),
+        ),
+      );
+      return;
+    }
     await _open(
       RecoveryPhraseScreen(services: widget.services, budgetKey: key),
     );

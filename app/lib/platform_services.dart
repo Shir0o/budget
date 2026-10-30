@@ -50,6 +50,11 @@ final class WorkManagerBankSyncScheduler implements BankSyncScheduler {
   }
 }
 
+/// The person's Actor on this platform, so history and the sync manifest
+/// name the right device.
+Actor userActorFor(String operatingSystem) =>
+    operatingSystem == 'macos' ? Actor.userMac : Actor.userAndroid;
+
 final class SecureBudgetKeyStore implements BudgetKeyStore {
   const SecureBudgetKeyStore(this._storage);
 
@@ -65,6 +70,12 @@ final class SecureBudgetKeyStore implements BudgetKeyStore {
     final key = BudgetKey.generate();
     await _storage.write(key: _name(budgetId), value: key.toHex());
     return key;
+  }
+
+  @override
+  Future<BudgetKey?> existingKey(String budgetId) async {
+    final existing = await _storage.read(key: _name(budgetId));
+    return existing == null ? null : BudgetKey.fromHex(existing);
   }
 
   @override
