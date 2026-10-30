@@ -79,11 +79,13 @@ final class _Ledger {
           final category = line.category;
           if (category == readyToAssignCategory) continue;
           if (category == null) {
-            // A payment to the card spends its Card Payment Category, and a
-            // cash advance adds to it. Uncategorized card spending comes out
-            // of Ready to Assign, so it is funded.
+            // A payment to the card spends its Card Payment Category.
+            // Uncategorized card spending comes out of Ready to Assign, so
+            // it is funded. A cash advance goes to Ready to Assign instead,
+            // so its debt is unfunded.
             if (payment != null &&
                 !t.startingBalance &&
+                !state._isCashAdvance(t) &&
                 (t.isTransfer || line.amount.isNegative)) {
               add(payment, -line.amount);
             }

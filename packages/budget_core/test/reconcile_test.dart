@@ -139,6 +139,103 @@ void main() {
     expect(budget.state.transaction(budget.cleared)!.payee, 'Cafe');
   });
 
+  group('Merging two devices (ticket 06)', () {
+    /// Copies of the budget on a phone and a Mac, with each clock [phoneMs]
+    /// and [macMs] past the shared log.
+    (BudgetEngine, BudgetEngine) twoDevices(
+      _Budget budget, {
+      required int phoneMs,
+      required int macMs,
+    }) {
+      final base = budget.engine.events.last.hlc.wallMs;
+      BudgetEngine device(String id, int ms) => BudgetEngine(
+        log: InMemoryEventLog()..append(budget.engine.events),
+        deviceId: id,
+        actor: Actor.userAndroid,
+        nowMs: () => base + ms,
+      );
+      return (device('device-a', phoneMs), device('device-b', macMs));
+    }
+
+    test('a line the Mac clears later stays cleared, not reconciled', () {
+      final budget = _Budget();
+      final (phone, mac) = twoDevices(budget, phoneMs: 10, macMs: 20);
+
+      expect(
+        phone.execute(
+          Reconcile(
+            accountId: budget.checking,
+            date: _nov13,
+            bankBalance: const Money(48000),
+          ),
+        ),
+        isA<Accepted>(),
+      );
+      expect(
+        mac.execute(
+          EditTransaction(
+            transactionId: budget.uncleared,
+            cleared: ClearedStatus.cleared,
+          ),
+        ),
+        isA<Accepted>(),
+      );
+
+      final merged = BudgetState.replay({...phone.events, ...mac.events});
+      expect(
+        merged.transaction(budget.cleared)!.cleared,
+        ClearedStatus.reconciled,
+      );
+      expect(
+        merged.transaction(budget.uncleared)!.cleared,
+        ClearedStatus.cleared,
+      );
+    });
+
+    test('a cleared line dated after the reconcile date stays cleared', () {
+      final budget = _Budget();
+      // The Mac's clock is behind, so its charge sorts before the phone's
+      // reconcile, but it is dated Nov 14, after the Nov 13 reconcile.
+      final (phone, mac) = twoDevices(budget, phoneMs: 20, macMs: 10);
+
+      final created = mac.execute(
+        CreateTransaction(
+          accountId: budget.checking,
+          date: CivilDate(2026, 11, 14),
+          amount: const Money(-4000),
+          lines: const [LineInput(amount: Money(-4000))],
+        ),
+      ) as Accepted;
+      final charge = created.events.single.payload['transactionId'] as String;
+      expect(
+        mac.execute(
+          EditTransaction(
+            transactionId: charge,
+            cleared: ClearedStatus.cleared,
+          ),
+        ),
+        isA<Accepted>(),
+      );
+      expect(
+        phone.execute(
+          Reconcile(
+            accountId: budget.checking,
+            date: _nov13,
+            bankBalance: const Money(48000),
+          ),
+        ),
+        isA<Accepted>(),
+      );
+
+      final merged = BudgetState.replay({...phone.events, ...mac.events});
+      expect(
+        merged.transaction(budget.cleared)!.cleared,
+        ClearedStatus.reconciled,
+      );
+      expect(merged.transaction(charge)!.cleared, ClearedStatus.cleared);
+    });
+  });
+
   test('an unknown account is rejected', () {
     final budget = _Budget();
     final result = budget.run(

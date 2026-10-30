@@ -19,7 +19,7 @@ What are the exact formulas for category balances, Ready to Assign, overspending
   - If Available(c, m−1) < 0: Carry = 0. The negative amount is handled as overspending (below).
 - **Cash overspending(c, m):** the part of a negative Available caused by spending from budget (non-card) accounts. It is **subtracted from Ready to Assign in month m+1**.
 - **Credit overspending(c, m):** the part of a negative Available caused by card spending that was not funded. It is **not** subtracted from Ready to Assign. It stays as unfunded card debt (the card's balance is larger than its Card Payment Category).
-- **Ready to Assign (a single global number):** all income lines (lines categorized to Ready to Assign, in budget accounts) − all Assignments in every month, including future months − all cash overspending from months already closed − uncategorized outflows (ticket 09). It can go negative; the UI then shows "over-assigned" and automation stops assigning.
+- **Ready to Assign(m) (a single global number):** all income lines (lines categorized to Ready to Assign, in budget accounts) dated in or before month m + cash advances dated in or before m − all Assignments in every month, including future months − all cash overspending from months already closed − uncategorized outflows dated in or before m (ticket 09). It can go negative; the UI then shows "over-assigned" and automation stops assigning.
 - **Future months:** you may assign ahead. Future assignments reduce Ready to Assign immediately.
 - **Transactions that count:** every entered transaction counts on its date, including pending ones. Scheduled (not yet happened) transactions never count; they only drive targets and forecasts.
 
@@ -28,6 +28,7 @@ What are the exact formulas for category balances, Ready to Assign, overspending
 - **Budget accounts** (checking, savings, cash, credit card) affect the budget.
 - **Tracking accounts** (401k, mortgage) count toward net worth only.
 - A transfer between two budget accounts has no category.
+- A **cash advance** (a transfer from a card to a non-card budget account) works as in YNAB: the cash adds to Ready to Assign, the card's Card Payment Category does not change, and the new debt shows as unfunded until you assign to the Card Payment Category.
 - A transfer from a budget account to a tracking account needs a category, because money leaves the budget. The reverse direction needs Ready to Assign or a category.
 
 ### Card Payment Category
