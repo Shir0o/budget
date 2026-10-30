@@ -8,6 +8,7 @@ import 'civil_date.dart';
 import 'commands.dart';
 import 'event.dart';
 import 'event_log.dart';
+import 'history.dart';
 import 'hlc.dart';
 import 'money.dart';
 import 'sensitive_numbers.dart';
@@ -50,12 +51,17 @@ final class BudgetEngine {
   /// Every Event in the log, in HLC order.
   List<Event> get events => List.unmodifiable(_events);
 
+  /// Change History as of the latest Event (ticket 11).
+  ChangeHistory get history => _history ??= ChangeHistory.of(_events);
+  ChangeHistory? _history;
+
   CommandResult execute(Command command) {
     final result = _decide(command, _state, _Stamp(this));
     if (result is Accepted) {
       _log.append(result.events);
       _events.addAll(result.events);
       _state = BudgetState.replay(_events);
+      _history = null;
     }
     return result;
   }
@@ -71,16 +77,17 @@ final class _Stamp {
 
   Actor get actor => _engine.actor;
 
-  Event event(String type, Map<String, Object?> payload) => Event(
-    id: newId(),
-    budgetId: budgetId,
-    deviceId: _engine.deviceId,
-    hlc: _engine._clock.tick(),
-    actor: _engine.actor,
-    groupId: groupId,
-    type: type,
-    payload: payload,
-  );
+  Event event(String type, Map<String, Object?> payload, {Actor? actor}) =>
+      Event(
+        id: newId(),
+        budgetId: budgetId,
+        deviceId: _engine.deviceId,
+        hlc: _engine._clock.tick(),
+        actor: actor ?? _engine.actor,
+        groupId: groupId,
+        type: type,
+        payload: payload,
+      );
 }
 
 CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
@@ -247,6 +254,17 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
       }
       return Accepted([
         stamp.event(EventType.categoryArchived, {'categoryId': categoryId}),
+      ]);
+
+    case RevertGroup():
+      final compensation = stamp._engine.history.compensate(
+        command,
+        by: stamp.actor,
+      );
+      if (compensation.rejection case final reason?) return Rejected(reason);
+      return Accepted([
+        for (final (type, payload) in compensation.events)
+          stamp.event(type, payload, actor: Actor.revert),
       ]);
   }
 }

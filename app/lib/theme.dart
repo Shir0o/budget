@@ -23,6 +23,15 @@ abstract final class Palette {
   static const zeroPill = Color(0xFFECEDEA);
   static const problemPill = Color(0xFFFBE8DA);
 
+  /// Actor badges in Change History. Each also has its own icon.
+  static const mcpPill = Color(0xFFE6E1F5);
+  static const mcpText = Color(0xFF4B3A99);
+  static const bankPill = Color(0xFFE3EBF7);
+  static const bankText = Color(0xFF24508F);
+
+  /// The border of the orange "depends on" box on Revert conflicts.
+  static const problemBorder = Color(0xFFF3D3BC);
+
   /// The grey "after" summary card on Move money.
   static const summary = Color(0xFFE7E9E4);
 }

@@ -3,13 +3,15 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../widgets.dart';
+import 'history_screen.dart';
 import 'new_transaction_screen.dart';
 import 'transaction_parts.dart';
 import 'transaction_screen.dart';
 
 /// One account's register (canvas: AccountRegister): its balance and
-/// cleared balance, and its transactions, newest first. The History tab
-/// arrives with ticket 07 and Reconcile with ticket 06.
+/// cleared balance, then a Transactions tab with its transactions, newest
+/// first, and a History tab with its Change History. Reconcile arrives with
+/// ticket 06.
 class AccountRegisterScreen extends StatefulWidget {
   const AccountRegisterScreen({
     super.key,
@@ -25,6 +27,8 @@ class AccountRegisterScreen extends StatefulWidget {
 }
 
 class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
+  var _showHistory = false;
+
   Future<void> _open(Widget screen) async {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
@@ -37,15 +41,20 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
     final id = widget.accountId;
     final transactions = state.register(id);
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: () =>
-            _open(NewTransactionScreen(engine: widget.engine, accountId: id)),
-        tooltip: 'New transaction',
-        backgroundColor: Palette.teal,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: const Icon(Icons.add, size: 24),
-      ),
+      floatingActionButton: _showHistory
+          ? null
+          : FloatingActionButton(
+              onPressed: () => _open(
+                NewTransactionScreen(engine: widget.engine, accountId: id),
+              ),
+              tooltip: 'New transaction',
+              backgroundColor: Palette.teal,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(Icons.add, size: 24),
+            ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -101,34 +110,48 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  CardBox(
-                    padding: EdgeInsets.zero,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (final (i, t) in transactions.indexed)
-                            _RegisterRow(
-                              state: state,
-                              transaction: t,
-                              first: i == 0,
-                              onTap: () => _open(
-                                TransactionScreen(
-                                  engine: widget.engine,
-                                  transactionId: t.id,
+                  Segmented(
+                    options: const [(false, 'Transactions'), (true, 'History')],
+                    selected: _showHistory,
+                    onChanged: (history) =>
+                        setState(() => _showHistory = history),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_showHistory)
+                    HistoryEntries(
+                      engine: widget.engine,
+                      filter: HistoryFilter(entity: EntityRef.account(id)),
+                      onChanged: () => setState(() {}),
+                    )
+                  else
+                    CardBox(
+                      padding: EdgeInsets.zero,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final (i, t) in transactions.indexed)
+                              _RegisterRow(
+                                state: state,
+                                transaction: t,
+                                first: i == 0,
+                                onTap: () => _open(
+                                  TransactionScreen(
+                                    engine: widget.engine,
+                                    transactionId: t.id,
+                                  ),
                                 ),
                               ),
-                            ),
-                          if (transactions.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Hint('No transactions yet.'),
-                            ),
-                        ],
+                            if (transactions.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Hint('No transactions yet.'),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),

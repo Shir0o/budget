@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../widgets.dart';
+import 'history_screen.dart';
 import 'move_money_screen.dart';
 
 /// Category detail for one month (canvas: Category): Carry + Assigned +
@@ -56,6 +57,25 @@ class _CategoryScreenState extends State<CategoryScreen> {
       ),
     );
     setState(() {});
+  }
+
+  Future<void> _history() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => EntityHistoryScreen(
+          engine: widget.engine,
+          entity: EntityRef.category(widget.categoryId),
+          name: _state.category(widget.categoryId)!.name,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    // A revert may have removed the Category.
+    if (_state.category(widget.categoryId) == null) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() {});
+    }
   }
 
   Future<void> _archive() async {
@@ -144,6 +164,10 @@ class _CategoryScreenState extends State<CategoryScreen> {
                     icon: const Icon(Icons.more_vert, color: Palette.muted),
                     onSelected: (action) => action(),
                     itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: _history,
+                        child: const Text('Change History'),
+                      ),
                       PopupMenuItem(
                         value: _archive,
                         child: const Text('Archive category'),
