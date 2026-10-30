@@ -68,6 +68,19 @@ abstract final class EventType {
   /// lines: [{lineId, amountCents, category}]}`, where `category` is
   /// [readyToAssignCategory] for income.
   static const transactionCreated = 'TransactionCreated';
+
+  /// `{categoryGroupId, name}`
+  static const categoryGroupCreated = 'CategoryGroupCreated';
+
+  /// `{categoryId, categoryGroupId, name}`
+  static const categoryCreated = 'CategoryCreated';
+
+  /// `{categoryId}`
+  static const categoryArchived = 'CategoryArchived';
+
+  /// `{category, month, deltaCents}`, where `month` is `YYYY-MM`. A delta,
+  /// so concurrent Assignments from two devices add up (ticket 06).
+  static const assignmentChanged = 'AssignmentChanged';
 }
 
 /// The `category` value of a transaction line whose money goes to

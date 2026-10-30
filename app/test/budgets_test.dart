@@ -5,6 +5,8 @@ import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+final _nov = CalendarMonth(2026, 11);
+
 Future<BudgetLibrary> _load(InMemoryBudgetStorage storage, DevicePrefs prefs) =>
     BudgetLibrary.load(
       storage: storage,
@@ -57,7 +59,10 @@ void main() {
         (await services.keys.keyFor(personalId)).toHex(),
         isNot((await services.keys.keyFor(sideId)).toHex()),
       );
-      expect(personal.state.readyToAssign, isNot(side.state.readyToAssign));
+      expect(
+        personal.state.readyToAssign(_nov),
+        isNot(side.state.readyToAssign(_nov)),
+      );
     });
 
     test('reopens the budget that was open last', () async {
@@ -75,7 +80,7 @@ void main() {
         'Personal',
         'Side business',
       ]);
-      expect(restarted.current.state.readyToAssign, const Money(100));
+      expect(restarted.current.state.readyToAssign(_nov), const Money(100));
     });
 
     test('a new budget is not stored until it is committed', () async {

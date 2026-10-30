@@ -12,10 +12,120 @@ const _months = [
 String formatDate(CivilDate date) =>
     '${_months[date.month - 1]} ${date.day}, ${date.year}';
 
+const _monthNames = [
+  'January', 'February', 'March', 'April', 'May', 'June', //
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/// `Nov 14`
+String formatDay(CivilDate date) => '${_months[date.month - 1]} ${date.day}';
+
 /// `Nov 2026`
-String formatMonth(CivilDate date) => '${_months[date.month - 1]} ${date.year}';
+String formatMonth(CalendarMonth month) =>
+    '${_months[month.month - 1]} ${month.year}';
+
+/// `November`
+String monthName(CalendarMonth month) => _monthNames[month.month - 1];
 
 CivilDate today() => CivilDate.fromDateTime(DateTime.now());
+
+CalendarMonth thisMonth() => CalendarMonth.of(today());
+
+/// A Category's Available as a pill: teal above zero, grey at zero and
+/// orange when overspent.
+class AvailablePill extends StatelessWidget {
+  const AvailablePill(this.amount, {super.key});
+
+  final Money amount;
+
+  @override
+  Widget build(BuildContext context) {
+    final (background, foreground) = amount.isNegative
+        ? (Palette.problemPill, Palette.problemText)
+        : amount.isPositive
+        ? (Palette.positivePill, Palette.positiveText)
+        : (Palette.zeroPill, Palette.inkSoft);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        amount.format(),
+        style: amountStyle(
+          fontSize: 13,
+          fontWeight: amount.isNegative ? FontWeight.w600 : FontWeight.w500,
+          color: foreground,
+        ),
+      ),
+    );
+  }
+}
+
+/// The bottom navigation. Tabs are added as their screens arrive; for now
+/// only Budget exists.
+class MainNav extends StatelessWidget {
+  const MainNav({super.key});
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(
+      color: Palette.card,
+      border: Border(top: BorderSide(color: Palette.cardBorder)),
+    ),
+    child: SafeArea(
+      top: false,
+      child: SizedBox(
+        height: 80,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Semantics(
+                  selected: true,
+                  button: true,
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    spacing: 4,
+                    children: [
+                      _NavPill(icon: Icons.table_chart_outlined),
+                      Text(
+                        'Budget',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _NavPill extends StatelessWidget {
+  const _NavPill({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 56,
+    height: 30,
+    decoration: BoxDecoration(
+      color: Palette.positivePill,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Icon(icon, size: 22, color: Palette.positiveText),
+  );
+}
 
 /// A white card with the canvas border.
 class CardBox extends StatelessWidget {

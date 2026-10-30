@@ -152,7 +152,7 @@ class _ExportScreenState extends State<ExportScreen> {
                           onTap: () => _text(
                             'budget-$date.json',
                             'application/json',
-                            stateJson,
+                            (state) => stateJson(state, month: thisMonth()),
                           ),
                         ),
                       ],

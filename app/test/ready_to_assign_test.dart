@@ -3,6 +3,8 @@ import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+final _nov = CalendarMonth(2026, 11);
+
 BudgetEngine _engine(EventLog log) =>
     BudgetEngine(log: log, deviceId: 'test-device', actor: Actor.userAndroid);
 
@@ -53,7 +55,7 @@ void main() {
       'Starting Balance',
       'Employer',
     ]);
-    expect(state.readyToAssign, const Money(721055));
+    expect(state.readyToAssign(_nov), const Money(721055));
   });
 
   testWidgets('an amount that is not exact cents is refused', (tester) async {

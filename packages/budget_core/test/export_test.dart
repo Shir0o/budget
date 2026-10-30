@@ -62,12 +62,66 @@ void main() {
         'Month,Category Group/Category,Category Group,Category,Assigned\r\n',
       );
     });
+
+    test('writes one row per Category per month', () {
+      final engine = _home();
+      String group(String name) =>
+          (engine.execute(
+                CreateCategoryGroup(name: name),
+              ) as Accepted).events.single.payload['categoryGroupId']
+              as String;
+      String category(String groupId, String name) =>
+          (engine.execute(
+                CreateCategory(groupId: groupId, name: name),
+              ) as Accepted).events.single.payload['categoryId']
+              as String;
+      final rent = category(group('Bills'), 'Rent');
+      final groceries = category(group('Everyday'), 'Groceries');
+      engine.execute(
+        SetAssignment(
+          categoryId: rent,
+          month: CalendarMonth(2026, 11),
+          amount: const Money(165000),
+        ),
+      );
+      engine.execute(
+        SetAssignment(
+          categoryId: groceries,
+          month: CalendarMonth(2026, 12),
+          amount: const Money(30000),
+        ),
+      );
+
+      expect(
+        assignmentsCsv(engine.state),
+        'Month,Category Group/Category,Category Group,Category,Assigned\r\n'
+        'Nov 2026,Bills: Rent,Bills,Rent,1650.00\r\n'
+        'Nov 2026,Everyday: Groceries,Everyday,Groceries,0.00\r\n'
+        'Dec 2026,Bills: Rent,Bills,Rent,0.00\r\n'
+        'Dec 2026,Everyday: Groceries,Everyday,Groceries,300.00\r\n',
+      );
+
+      final json = jsonDecode(
+        stateJson(engine.state, month: CalendarMonth(2026, 11)),
+      ) as Map;
+      expect((json['categories'] as List).map((c) => (c as Map)['name']), [
+        'Rent',
+        'Groceries',
+      ]);
+      expect(json['assignments'], [
+        {'category': rent, 'month': '2026-11', 'assignedCents': 165000},
+        {'category': groceries, 'month': '2026-12', 'assignedCents': 30000},
+      ]);
+      expect(json['readyToAssignCents'], 721055 - 165000 - 30000);
+    });
   });
 
   group('stateJson', () {
     test('holds the whole current state in cents', () {
       final engine = _home();
-      final json = jsonDecode(stateJson(engine.state)) as Map;
+      final json = jsonDecode(
+        stateJson(engine.state, month: CalendarMonth(2026, 11)),
+      ) as Map;
 
       expect(json['format'], 'budget-state');
       expect((json['budget'] as Map)['name'], 'Home');
