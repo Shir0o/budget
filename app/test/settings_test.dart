@@ -77,10 +77,7 @@ void main() {
       expect(find.text('Encrypted sync'), findsOneWidget);
       expect(find.text('AI apps (MCP)'), findsOneWidget);
       expect(find.text('Import from Actual'), findsOneWidget);
-      // Rows for features that aren't built yet stay hidden.
-      for (final hidden in ['Import & compare']) {
-        expect(find.text(hidden), findsNothing);
-      }
+      expect(find.text('Import & compare'), findsOneWidget);
     });
   });
 
