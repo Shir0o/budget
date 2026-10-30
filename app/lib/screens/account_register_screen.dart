@@ -5,13 +5,14 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'history_screen.dart';
 import 'new_transaction_screen.dart';
+import 'reconcile_screen.dart';
 import 'transaction_parts.dart';
 import 'transaction_screen.dart';
 
 /// One account's register (canvas: AccountRegister): its balance and
 /// cleared balance, then a Transactions tab with its transactions, newest
-/// first, and a History tab with its Change History. Reconcile arrives with
-/// ticket 06.
+/// first, and a History tab with its Change History. Reconcile opens from
+/// its header.
 class AccountRegisterScreen extends StatefulWidget {
   const AccountRegisterScreen({
     super.key,
@@ -81,6 +82,16 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => _open(
+                      ReconcileScreen(engine: widget.engine, accountId: id),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                    child: const Text('Reconcile'),
                   ),
                 ],
               ),

@@ -120,6 +120,7 @@ final class EditTransaction extends Command {
     this.cleared,
     this.amount,
     this.lines,
+    this.confirmReconciled = false,
   });
 
   final String transactionId;
@@ -129,6 +130,30 @@ final class EditTransaction extends Command {
   final ClearedStatus? cleared;
   final Money? amount;
   final List<LineInput>? lines;
+
+  /// Editing a Reconciled transaction needs the person's confirmation
+  /// (ticket 09).
+  final bool confirmReconciled;
+}
+
+/// Reconciles [accountId] against [bankBalance], the balance the bank shows
+/// on [date] (ticket 09). If the account's cleared balance matches, its
+/// cleared transactions become Reconciled. On a mismatch it is rejected with
+/// [Rejection.reconcileMismatch], unless [addAdjustment] is set: then an
+/// adjustment transaction for the difference is added first. The adjustment
+/// is cleared, Unreviewed, and goes to Ready to Assign.
+final class Reconcile extends Command {
+  const Reconcile({
+    required this.accountId,
+    required this.date,
+    required this.bankBalance,
+    this.addAdjustment = false,
+  });
+
+  final String accountId;
+  final CivilDate date;
+  final Money bankBalance;
+  final bool addAdjustment;
 }
 
 final class DeleteTransaction extends Command {
@@ -373,6 +398,14 @@ enum Rejection {
 
   /// [ReviewLine] of a gift line without a recipient.
   recipientRequired,
+
+  /// [Reconcile] when the cleared balance differs from the bank's and no
+  /// adjustment was asked for.
+  reconcileMismatch,
+
+  /// [EditTransaction] of a Reconciled transaction without
+  /// `confirmReconciled`.
+  reconciledNeedsConfirmation,
 }
 
 /// What a command produced.

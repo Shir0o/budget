@@ -100,11 +100,13 @@ class _TransactionScreenState extends State<TransactionScreen> {
     if (edit?.line case final line?) setState(() => _lines.add(line));
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (containsSensitiveNumber(_memo.text)) {
       setState(() => _memoError = accountNumberMessage);
       return;
     }
+    final reconciled = _saved.cleared == ClearedStatus.reconciled;
+    if (reconciled && !await _confirmReconciledEdit() || !mounted) return;
     final result = widget.engine.execute(
       EditTransaction(
         transactionId: widget.transactionId,
@@ -112,6 +114,7 @@ class _TransactionScreenState extends State<TransactionScreen> {
         date: _date,
         memo: _memo.text,
         cleared: _cleared,
+        confirmReconciled: reconciled,
         amount: _outflow ? -_magnitude : _magnitude,
         lines: [for (final line in _lines) line.toInput(outflow: _outflow)],
       ),
@@ -121,6 +124,29 @@ class _TransactionScreenState extends State<TransactionScreen> {
       Navigator.of(context).pop();
     }
   }
+
+  Future<bool> _confirmReconciledEdit() async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Change a reconciled transaction?'),
+          content: const Text(
+            'This transaction was reconciled with your bank. Changing it '
+            'can put the account out of step with the bank again.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Change it'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
 
   Future<void> _delete() async {
     final confirmed = await showDialog<bool>(
