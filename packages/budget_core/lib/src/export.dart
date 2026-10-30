@@ -71,6 +71,75 @@ const _monthNames = [
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
+/// The Business report's summary (ticket 09): a row per Business Tag, then
+/// the totals, a blank line and the footer.
+String businessSummaryCsv(BusinessReport report) => _csv(
+  const ['Business Tag', 'Schedule C line', 'Gross', 'Rule', 'Deductible'],
+  [
+    for (final row in report.rows)
+      [
+        row.tag.name,
+        row.tag.line,
+        _decimal(row.gross.cents),
+        row.tag.rule.label,
+        _decimal(row.deductible.cents),
+      ],
+    const <String>[],
+    [
+      'Total self-employment income',
+      '',
+      _decimal(report.income.cents),
+      '',
+      _decimal(report.income.cents),
+    ],
+    [
+      'Total deductible expenses',
+      '',
+      _decimal(
+        report.rows
+            .where((row) => !row.tag.isIncome)
+            .fold(Money.zero, (sum, row) => sum + row.gross)
+            .cents,
+      ),
+      '',
+      _decimal(report.deductibleExpenses.cents),
+    ],
+    ['Net', '', _decimal(report.net.cents), '', ''],
+    const <String>[],
+    const [businessReportFooter],
+  ],
+);
+
+/// The Business report's detail (ticket 09): every tagged line in date
+/// order, a blank line and the footer.
+String businessDetailCsv(BusinessReport report) => _csv(
+  const [
+    'Date',
+    'Payee',
+    'Account',
+    'Amount',
+    'Memo',
+    'Business Tag',
+    'Recipient',
+    'Deductible',
+  ],
+  [
+    for (final line in report.lines)
+      [
+        line.transaction.date.toIso(),
+        line.transaction.payee,
+        line.account,
+        _decimal(line.line.amount.cents),
+        line.line.memo,
+        line.tag.name,
+        line.line.recipient ?? '',
+        _decimal(line.deductible.cents),
+      ],
+    const <String>[],
+    const [businessReportFooter],
+  ],
+);
+
 /// The whole current state as indented JSON, with Ready to Assign as it
 /// stands during [month]. Not encrypted.
 String stateJson(BudgetState state, {required CalendarMonth month}) {
@@ -131,6 +200,17 @@ String stateJson(BudgetState state, {required CalendarMonth month}) {
               'month': m.toIso(),
               'assignedCents': state.assigned(c.id, m).cents,
             },
+    ],
+    'businessTags': [
+      for (final tag in state.businessTags)
+        if (tag.custom)
+          {'name': tag.name, 'line': tag.line, 'rule': tag.rule.toJson()},
+    ],
+    'businessUse': [
+      for (final MapEntry(key: tag, value: byYear)
+          in state.businessUsePercentages.entries)
+        for (final MapEntry(key: year, value: percent) in byYear.entries)
+          {'tag': tag, 'year': year, 'percent': percent},
     ],
     'month': month.toIso(),
     'readyToAssignCents': state.readyToAssign(month).cents,

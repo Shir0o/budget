@@ -187,6 +187,19 @@ abstract final class EventType {
 
   /// `{scheduleId}`
   static const scheduleRestored = 'ScheduleRestored';
+
+  // Business Tags and the business report (ticket 11).
+
+  /// `{name, line, rule}`, where `rule` is a DeductionRule's stored form
+  /// (`{kind: full}`, `{kind: percent, percent}`, `{kind: businessUse}` or
+  /// `{kind: perRecipientCap, capCents}`). Custom tags only: the 19 presets
+  /// ship with the app.
+  static const businessTagCreated = 'BusinessTagCreated';
+
+  /// `{tag, year, percent}`: a Business Tag's business-use % for one tax
+  /// year, 0 to 100. Last writer wins. A null percent, as a revert writes,
+  /// unsets it.
+  static const businessUseSet = 'BusinessUseSet';
 }
 
 /// The `category` value of a transaction line whose money goes to

@@ -461,6 +461,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                                 spacing: 6,
                                 children: [
                                   BusinessField(
+                                    tags: state.businessTags,
                                     value: _business,
                                     onChanged: (status) =>
                                         setState(() => _business = status),

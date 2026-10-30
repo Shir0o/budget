@@ -276,7 +276,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
               'Business.',
             )
           else
-            _businessField(item),
+            _businessField(state, item),
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             spacing: 8,
@@ -314,11 +314,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
     );
   }
 
-  Widget _businessField(ReviewItem item) {
+  Widget _businessField(BudgetState state, ReviewItem item) {
     final business = _business;
     final tag = business is Business ? business.tag : null;
     final tags = _allTags
-        ? presetBusinessTags
+        ? [for (final preset in state.businessTags) preset.name]
         : [
             ..._featuredTags,
             if (tag != null && tag.isNotEmpty && !_featuredTags.contains(tag))

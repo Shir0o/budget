@@ -5,6 +5,8 @@ import '../services.dart';
 import '../settings_widgets.dart';
 import '../theme.dart';
 import 'app_lock_screen.dart';
+import 'business_report_screen.dart';
+import 'business_tags_screen.dart';
 import 'categories_screen.dart';
 import 'export_screen.dart';
 import 'forecast_screen.dart';
@@ -55,6 +57,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
           label: 'Forecast',
           value: 'Next 12 months',
           onTap: () => _open(ForecastScreen(engine: widget.engine)),
+        ),
+        SettingsRow(
+          label: 'Business tags',
+          value: '${widget.engine.state.businessTags.length} tags',
+          onTap: () => _open(BusinessTagsScreen(engine: widget.engine)),
+        ),
+        SettingsRow(
+          label: 'Business report',
+          value: 'Yearly, CSV',
+          onTap: () => _open(
+            BusinessReportScreen(
+              engine: widget.engine,
+              services: widget.services,
+            ),
+          ),
         ),
       ],
     ),
