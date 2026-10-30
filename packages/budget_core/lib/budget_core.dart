@@ -3,6 +3,7 @@ library;
 
 export 'src/actor.dart';
 export 'src/backup.dart';
+export 'src/bank_sync.dart';
 export 'src/budget_key.dart';
 export 'src/budget_state.dart';
 export 'src/civil_date.dart';

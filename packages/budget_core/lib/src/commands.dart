@@ -1,3 +1,4 @@
+import 'bank_sync.dart';
 import 'budget_state.dart';
 import 'civil_date.dart';
 import 'event.dart';
@@ -420,6 +421,16 @@ final class EnterSchedule extends Command {
   const EnterSchedule({required this.scheduleId});
 
   final String scheduleId;
+}
+
+/// Applies one bank fetch (ticket 10) as one Event group with actor
+/// `bank-sync`: a same SimpleFIN id updates its transaction in place, and
+/// anything new becomes an Unreviewed line. A Reviewed line whose amount
+/// changed returns to Review with the note [bankChangeNote].
+final class ImportBankTransactions extends Command {
+  const ImportBankTransactions({required this.entries});
+
+  final List<BankEntry> entries;
 }
 
 // Business Tags (ticket 11).
