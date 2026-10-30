@@ -582,9 +582,12 @@ final class BudgetState {
       case EventType.targetCleared:
         _targets.remove(p['categoryId'] as String);
       case EventType.automationModeSet:
-        _modes[p['categoryId'] as String] = AutomationMode.values.byName(
-          p['mode'] as String,
-        );
+        // A null mode, as a revert writes, goes back to the default.
+        final id = p['categoryId'] as String;
+        final mode = p['mode'] as String?;
+        mode == null
+            ? _modes.remove(id)
+            : _modes[id] = AutomationMode.values.byName(mode);
       case EventType.prioritySet:
         _priority = (p['categoryIds'] as List).cast<String>();
     }

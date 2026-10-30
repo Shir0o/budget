@@ -626,4 +626,52 @@ void main() {
       expect(budget.engine.events.last.type, EventType.transactionCreated);
     });
   });
+
+  group('Change History', () {
+    test('reverts an automation run as a unit', () {
+      final budget = _Budget(income: const Money(20000));
+      final phone = budget.category(
+        'Phone',
+        target: _monthly(4500, CivilDate(2026, 11, 20)),
+        mode: AutomationMode.auto,
+      );
+      final internet = budget.category(
+        'Internet',
+        target: _monthly(6000, CivilDate(2026, 11, 20)),
+        mode: AutomationMode.auto,
+      );
+      final run = budget.run(RunAutomation(month: _nov));
+
+      budget.run(RevertGroup(groupId: run.first.groupId));
+
+      expect(budget.state.assigned(phone, _nov), Money.zero);
+      expect(budget.state.assigned(internet, _nov), Money.zero);
+    });
+
+    test('reverts Targets, Automation Modes and the priority order', () {
+      final budget = _Budget();
+      final rent = budget.category('Rent');
+      final phone = budget.category('Phone');
+      String last() => budget.engine.events.last.groupId;
+
+      budget.run(
+        SetTarget(
+          categoryId: phone,
+          target: const KeepAtLeastTarget(amount: Money(4500)),
+        ),
+      );
+      budget.run(RevertGroup(groupId: last()));
+      expect(budget.state.target(phone), isNull);
+
+      budget.run(
+        SetAutomationMode(categoryId: phone, mode: AutomationMode.auto),
+      );
+      budget.run(RevertGroup(groupId: last()));
+      expect(budget.state.automationMode(phone), AutomationMode.suggest);
+
+      budget.run(SetPriority(categoryIds: [phone, rent]));
+      budget.run(RevertGroup(groupId: last()));
+      expect([for (final c in budget.state.priority) c.id], [rent, phone]);
+    });
+  });
 }

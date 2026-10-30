@@ -5,6 +5,7 @@ import 'event.dart';
 import 'event_effects.dart';
 import 'hlc.dart';
 import 'money.dart';
+import 'target.dart';
 
 part 'history_restore.dart';
 
@@ -817,6 +818,20 @@ final class ChangeHistory {
             : '$amount in ${lines.length} lines';
       }(),
       archivedField => value == true ? 'Archived' : 'Active',
+      targetField => () {
+        final target = Target.fromJson((value as Map).cast());
+        return '${target.amount.format()} ${switch (target) {
+          RepeatingTarget() => 'repeating',
+          ByDateTarget() => 'by ${_date(target.date.toIso())}',
+          KeepAtLeastTarget() => 'kept at least',
+        }}';
+      }(),
+      automationModeField => switch (value) {
+        'off' => 'Off',
+        'auto' => 'Auto',
+        _ => 'Suggest',
+      },
+      priorityField => '${(value as List).length} Categories in order',
       deletedField => value == true ? 'Deleted' : 'Kept',
       _ => '$value',
     };

@@ -161,7 +161,8 @@ abstract final class EventType {
   /// `{categoryId}`
   static const targetCleared = 'TargetCleared';
 
-  /// `{categoryId, mode}`, where `mode` is `off`, `suggest` or `auto`.
+  /// `{categoryId, mode}`, where `mode` is `off`, `suggest` or `auto`, or
+  /// null for the default, as a revert writes.
   static const automationModeSet = 'AutomationModeSet';
 
   /// `{categoryIds}`: the whole priority order, replaced as a whole.
