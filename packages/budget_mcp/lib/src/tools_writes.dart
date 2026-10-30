@@ -161,10 +161,6 @@ final writeTools = <WriteTool>[
         'type': 'string',
         'enum': ['uncleared', 'cleared', 'reconciled'],
       },
-      'confirmReconciled': {
-        'type': 'boolean',
-        'description': 'Needed to edit a Reconciled transaction.',
-      },
     },
     required: ['budgetId', 'transactionId'],
     build: _updateTransaction,
@@ -362,6 +358,9 @@ final writeTools = <WriteTool>[
   ),
 ];
 
+const _reconciledIsAPersons =
+    'Reconciled is the person\'s call: they must make that change in the app.';
+
 Command _createTransaction(ToolRequest request, CalendarMonth thisMonth) =>
     CreateTransaction(
       accountId: request.requireString('accountId'),
@@ -380,13 +379,11 @@ Command _updateTransaction(ToolRequest request, CalendarMonth thisMonth) =>
       memo: request.text('memo'),
       cleared: switch (request.string('cleared')) {
         null => null,
+        'reconciled' => throw const _Refusal(_reconciledIsAPersons),
         final name =>
           ClearedStatus.values.asNameMap()[name] ??
-              (throw const _Refusal(
-                '“cleared” must be uncleared, cleared or reconciled.',
-              )),
+              (throw const _Refusal('“cleared” must be uncleared or cleared.')),
       },
-      confirmReconciled: request.boolean('confirmReconciled') ?? false,
     );
 
 Command _splitTransaction(ToolRequest request, CalendarMonth thisMonth) =>
@@ -512,6 +509,9 @@ List<LineInput> _lines(ToolRequest request) {
 LineInput _lineInput(Map<String, Object?> line) => LineInput(
   amount: Money(switch (line['amountCents']) {
     final int cents => cents,
+    final double cents
+        when cents.isFinite && cents == cents.truncateToDouble() =>
+      cents.toInt(),
     _ => throw const _Refusal('“amountCents” must be whole cents.'),
   }),
   category: switch (line['categoryId']) {
@@ -589,8 +589,7 @@ String _rejection(Rejection reason) => switch (reason) {
     'Income needs readyToAssign as its Category, and an outflow a Category.',
   Rejection.targetAmountMustBePositive => 'The Target must be more than zero.',
   Rejection.intervalMustBePositive => '“every” must be 1 or more.',
-  Rejection.reconciledNeedsConfirmation =>
-    'That transaction is Reconciled. Pass confirmReconciled to change it.',
+  Rejection.reconciledNeedsConfirmation => _reconciledIsAPersons,
   Rejection.unknownGroup => 'No change with that group id.',
   Rejection.alreadyReverted => 'That change is already reverted.',
   Rejection.hasDependents || Rejection.cannotRevert =>
