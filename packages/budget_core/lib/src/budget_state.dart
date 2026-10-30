@@ -6,6 +6,7 @@ import 'target.dart';
 
 part 'automation.dart';
 part 'budget_math.dart';
+part 'business.dart';
 part 'forecast.dart';
 part 'schedules.dart';
 
@@ -126,29 +127,6 @@ final class Business extends BusinessStatus {
   @override
   int get hashCode => tag.hashCode;
 }
-
-/// The preset Business Tags (ticket 04). Custom tags arrive with ticket 11.
-const presetBusinessTags = [
-  'Self-employment income',
-  'Advertising',
-  'Car & truck',
-  'Contract labor',
-  'Insurance',
-  'Legal & professional',
-  'Office expense',
-  'Rent / lease',
-  'Supplies',
-  'Taxes & licenses',
-  'Travel',
-  'Meals',
-  'Utilities',
-  'Conferences & education',
-  'Software & subscriptions',
-  'Phone & internet',
-  'Gifts',
-  'Bank & payment fees',
-  'Other business expense',
-];
 
 /// A transaction's cleared status (ticket 09).
 enum ClearedStatus { uncleared, cleared, reconciled }
@@ -293,6 +271,11 @@ final class BudgetState {
 
   /// Deleted ones, kept so a revert can restore them (ticket 11).
   final _removedSchedules = <String, Schedule>{};
+
+  /// Custom Business Tags by name, and business-use % by tag, then tax year
+  /// (ticket 11).
+  final _customBusinessTags = <String, BusinessTag>{};
+  final _businessUse = <String, Map<int, int>>{};
 
   late final _Ledger _ledger;
 
@@ -630,6 +613,19 @@ final class BudgetState {
         _move(_schedules, _removedSchedules, p['scheduleId'] as String);
       case EventType.scheduleRestored:
         _move(_removedSchedules, _schedules, p['scheduleId'] as String);
+      case EventType.businessTagCreated:
+        final tag = BusinessTag.fromJson(p);
+        _customBusinessTags[tag.name] = tag;
+      case EventType.businessUseSet:
+        final year = p['year'] as int;
+        final byYear = _businessUse.putIfAbsent(p['tag'] as String, () => {});
+        switch (p['percent']) {
+          case final int percent:
+            byYear[year] = percent;
+          case null:
+            // A revert writes null to unset a percentage it added.
+            byYear.remove(year);
+        }
     }
   }
 

@@ -422,6 +422,39 @@ final class EnterSchedule extends Command {
   final String scheduleId;
 }
 
+// Business Tags (ticket 11).
+
+/// Adds a custom Business Tag (ticket 04). Its name must not be a preset or
+/// another custom tag.
+final class CreateBusinessTag extends Command {
+  const CreateBusinessTag({
+    required this.name,
+    required this.line,
+    required this.rule,
+  });
+
+  final String name;
+
+  /// One of [scheduleCLines].
+  final String line;
+  final DeductionRule rule;
+}
+
+/// Sets [tag]'s business-use % for tax [year], which is one calendar year.
+final class SetBusinessUse extends Command {
+  const SetBusinessUse({
+    required this.tag,
+    required this.year,
+    required this.percent,
+  });
+
+  final String tag;
+  final int year;
+
+  /// 0 to 100.
+  final int percent;
+}
+
 /// Why a command was refused.
 enum Rejection {
   /// [CreateBudget] when the log already holds a budget.
@@ -556,6 +589,22 @@ enum Rejection {
   /// [CreateSchedule] or [EditSchedule] of income that isn't to Ready to
   /// Assign, or of an outflow without a Category.
   scheduleCategoryRequired,
+
+  /// [CreateBusinessTag] with a name a preset or custom tag already has.
+  businessTagExists,
+
+  /// [CreateBusinessTag] without a Schedule C line.
+  businessLineRequired,
+
+  /// [CreateBusinessTag] with a fixed percentage outside 1 to 100, or
+  /// [SetBusinessUse] outside 0 to 100.
+  percentOutOfRange,
+
+  /// [CreateBusinessTag] with a gift cap of zero or less.
+  capMustBePositive,
+
+  /// [SetBusinessUse] for a tag that doesn't exist.
+  unknownBusinessTag,
 }
 
 /// What a command produced.

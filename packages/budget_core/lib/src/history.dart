@@ -604,6 +604,7 @@ final class ChangeHistory {
           EntityKind.category => 'category',
           EntityKind.transaction => null,
           EntityKind.schedule => 'scheduled transaction',
+          EntityKind.businessTag => 'business tag',
         };
         final created = _label(entity, (a.effect as Creates).fields);
         return _Described(
@@ -780,6 +781,12 @@ final class ChangeHistory {
           '';
       return payee.isEmpty ? 'Scheduled transaction' : payee;
     }
+    if (entity.kind == EntityKind.businessTag) {
+      // A preset tag is never created, so its id (its name) is the label.
+      return values['name'] as String? ??
+          _values[entity]?['name'] as String? ??
+          entity.id;
+    }
     if (entity.kind != EntityKind.transaction) {
       return values['name'] as String? ??
           _values[entity]?['name'] as String? ??
@@ -848,6 +855,7 @@ final class ChangeHistory {
         'auto' => 'Auto',
         _ => 'Suggest',
       },
+      _ when field.startsWith(businessUseField) => '$value%',
       priorityField => '${(value as List).length} Categories in order',
       deletedField => value == true ? 'Deleted' : 'Kept',
       _ => '$value',

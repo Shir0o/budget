@@ -336,6 +336,49 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
       return _deleteSchedule(command, state, stamp);
     case EnterSchedule():
       return _enterSchedule(command, state, stamp);
+    case CreateBusinessTag(:final name, :final line, :final rule):
+      final trimmed = name.trim();
+      if (trimmed.isEmpty) return const Rejected(Rejection.nameRequired);
+      if (state.businessTags.any(
+        (tag) => tag.name.toLowerCase() == trimmed.toLowerCase(),
+      )) {
+        return const Rejected(Rejection.businessTagExists);
+      }
+      if (line.trim().isEmpty) {
+        return const Rejected(Rejection.businessLineRequired);
+      }
+      if (rule case PercentDeduction(:final percent)
+          when percent < 1 || percent > 100) {
+        return const Rejected(Rejection.percentOutOfRange);
+      }
+      if (rule case PerRecipientCapDeduction(:final cap) when !cap.isPositive) {
+        return const Rejected(Rejection.capMustBePositive);
+      }
+      return Accepted([
+        stamp.event(EventType.businessTagCreated, {
+          'name': trimmed,
+          'line': line.trim(),
+          'rule': rule.toJson(),
+        }),
+      ]);
+    case SetBusinessUse(:final tag, :final year, :final percent):
+      final existing = state.businessTag(tag);
+      if (existing == null) {
+        return const Rejected(Rejection.unknownBusinessTag);
+      }
+      if (percent < 0 || percent > 100) {
+        return const Rejected(Rejection.percentOutOfRange);
+      }
+      if (state.businessUse(existing.name, year) == percent) {
+        return const Rejected(Rejection.noChange);
+      }
+      return Accepted([
+        stamp.event(EventType.businessUseSet, {
+          'tag': existing.name,
+          'year': year,
+          'percent': percent,
+        }),
+      ]);
   }
 }
 

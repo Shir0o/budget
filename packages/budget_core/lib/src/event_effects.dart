@@ -8,6 +8,7 @@ enum EntityKind {
   category,
   transaction,
   schedule,
+  businessTag,
 }
 
 /// One budget, account, category group, Category, transaction or Scheduled
@@ -85,6 +86,10 @@ const priorityField = 'priority';
 /// A transaction's amount and lines together, as `{amountCents, lines}`.
 /// The whole line set is last writer wins (ticket 06).
 const splitField = 'split';
+
+/// A Business Tag's business-use % for one tax year, stored as
+/// `Business use % for <year>`. A null value, as a revert writes, unsets it.
+const businessUseField = 'Business use % for ';
 
 /// How Change History reads one Event type.
 final class EventSpec {
@@ -337,6 +342,22 @@ final Map<String, EventSpec> eventSpecs = {
     deletedField,
     false,
   ),
+  EventType.businessTagCreated: EventSpec(
+    (p) => [
+      Creates(EntityRef(EntityKind.businessTag, _id(p, 'name')), {
+        'name': p['name'],
+        'line': p['line'],
+        'rule': p['rule'],
+      }),
+    ],
+  ),
+  EventType.businessUseSet: EventSpec(
+    (p) => [
+      SetsFields(EntityRef(EntityKind.businessTag, _id(p, 'tag')), {
+        '$businessUseField${p['year']}': p['percent'],
+      }),
+    ],
+  ),
 };
 
 /// The Events that set [fields] on [entity], or null when one of them
@@ -449,6 +470,21 @@ List<PlannedEvent>? writeFields(EntityRef entity, Map<String, Object?> fields) {
       );
       deleted ? events.add(event) : events.insert(0, event);
       return events;
+    case EntityKind.businessTag:
+      // A custom tag has no delete, so creating one can't be undone. Its
+      // business-use % can.
+      if (deleted != null || rest.isEmpty) return null;
+      final percentEvents = <PlannedEvent>[];
+      for (final MapEntry(key: field, value: percent) in rest.entries) {
+        if (!field.startsWith(businessUseField)) return null;
+        final year = int.tryParse(field.substring(businessUseField.length));
+        if (year == null) return null;
+        percentEvents.add((
+          EventType.businessUseSet,
+          {'tag': entity.id, 'year': year, 'percent': percent},
+        ));
+      }
+      return percentEvents;
   }
 }
 

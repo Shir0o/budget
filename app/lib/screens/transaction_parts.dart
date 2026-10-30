@@ -89,10 +89,13 @@ Future<String?> pickCategory(
 class BusinessField extends StatelessWidget {
   const BusinessField({
     super.key,
+    required this.tags,
     required this.value,
     required this.onChanged,
   });
 
+  /// The presets and any custom tags.
+  final List<BusinessTag> tags;
   final BusinessStatus? value;
   final ValueChanged<BusinessStatus> onChanged;
 
@@ -118,11 +121,11 @@ class BusinessField extends StatelessWidget {
           Wrap(
             spacing: 6,
             children: [
-              for (final tag in presetBusinessTags)
+              for (final tag in tags)
                 SelectChip(
-                  label: tag,
-                  selected: value.tag == tag,
-                  onTap: () => onChanged(Business(tag)),
+                  label: tag.name,
+                  selected: value.tag == tag.name,
+                  onTap: () => onChanged(Business(tag.name)),
                 ),
             ],
           ),
@@ -502,6 +505,7 @@ class _LineEditorState extends State<_LineEditor> {
           ),
           const SizedBox(height: 12),
           BusinessField(
+            tags: widget.state.businessTags,
             value: _business,
             onChanged: (status) => setState(() => _business = status),
           ),
