@@ -49,10 +49,15 @@ class _ReconcileScreenState extends State<ReconcileScreen> {
   @override
   Widget build(BuildContext context) {
     final id = widget.accountId;
-    final cleared = _state.clearedBalance(id);
+    // The same as-of date _reconcile passes, so the numbers match.
+    final asOf = today();
+    final cleared = _state.clearedBalance(id, asOf: asOf);
     final count = _state
         .register(id)
-        .where((t) => t.cleared == ClearedStatus.cleared)
+        .where(
+          (t) =>
+              t.cleared == ClearedStatus.cleared && t.date.compareTo(asOf) <= 0,
+        )
         .length;
     final noun = count == 1 ? 'transaction' : 'transactions';
     final bank = Money.tryParse(_balance.text);

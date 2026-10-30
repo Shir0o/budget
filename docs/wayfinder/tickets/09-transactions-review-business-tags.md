@@ -32,7 +32,7 @@ What does a transaction need before it counts as reviewed, how do Business Tags 
 
 - **Splits:** any number of lines. Lines must sum to the parent amount, and each line has its own category, business status, and memo.
 - **Cleared status:** `uncleared`, `cleared`, or `reconciled`.
-- **Reconcile:** enter the bank balance; the SimpleFIN balance is offered as a default. If the cleared balance matches, cleared transactions dated on or before the reconcile date become reconciled. A transaction another device clears after the reconcile (in HLC order) stays cleared. Reconciled transactions need a confirmation before editing.
+- **Reconcile:** enter the bank balance; the SimpleFIN balance is offered as a default. It is compared with the cleared balance as of the reconcile date (cleared and reconciled transactions dated on or before it); a mismatch's adjustment is the difference from that balance. If it matches, cleared transactions dated on or before the reconcile date become reconciled. A transaction another device clears after the reconcile (in HLC order) stays cleared. Reconciled transactions need a confirmation before editing.
   - On a mismatch, you can create an **adjustment transaction** (Unreviewed, categorized to Ready to Assign).
 - **Blocked content:** memo and payee fields reject anything that looks like a card or account number (the pattern from ticket 13), with the message "Don't store account numbers here."
 
