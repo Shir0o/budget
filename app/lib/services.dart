@@ -25,6 +25,11 @@ abstract interface class DevicePrefs {
   /// The budget that was open last, which the app opens next time.
   Future<String?> readLastBudgetId();
   Future<void> writeLastBudgetId(String id);
+
+  /// The last month an automation run started on opening [budgetId] here
+  /// (ticket 08).
+  Future<CalendarMonth?> readAutomationMonth(String budgetId);
+  Future<void> writeAutomationMonth(String budgetId, CalendarMonth month);
 }
 
 /// Hands a finished file to the person to save where they choose.
@@ -130,6 +135,7 @@ final class InMemoryDevicePrefs implements DevicePrefs {
   CivilDate? _lastBackup;
   var _budgetIds = <String>[];
   String? _lastBudgetId;
+  final _automationMonths = <String, CalendarMonth>{};
 
   @override
   Future<bool> readAppLockEnabled() async => _appLock;
@@ -155,6 +161,16 @@ final class InMemoryDevicePrefs implements DevicePrefs {
 
   @override
   Future<void> writeLastBudgetId(String id) async => _lastBudgetId = id;
+
+  @override
+  Future<CalendarMonth?> readAutomationMonth(String budgetId) async =>
+      _automationMonths[budgetId];
+
+  @override
+  Future<void> writeAutomationMonth(
+    String budgetId,
+    CalendarMonth month,
+  ) async => _automationMonths[budgetId] = month;
 }
 
 /// Keeps "saved" files in [saved] instead of writing them anywhere.

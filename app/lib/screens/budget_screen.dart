@@ -6,14 +6,18 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'add_account_screen.dart';
 import 'add_category_screen.dart';
+import 'assign_screen.dart';
 import 'budget_switcher.dart';
 import 'category_screen.dart';
 import 'new_transaction_screen.dart';
 import 'settings_screen.dart';
 
-/// The Budget month (canvas: Main): Ready to Assign, then each category
-/// group's Categories with their Assigned and Available for the month.
-/// Assign arrives with a later ticket.
+/// The Budget month (canvas: Main): Ready to Assign with the Assign
+/// button, then each category group's Categories with their Assigned and
+/// Available for the month.
+///
+/// The first time a budget opens in a month, an automation run starts for
+/// that month (ticket 08).
 class BudgetScreen extends StatefulWidget {
   const BudgetScreen({super.key, required this.engine});
 
@@ -25,6 +29,31 @@ class BudgetScreen extends StatefulWidget {
 
 class _BudgetScreenState extends State<BudgetScreen> {
   var _month = thisMonth();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _firstOpenRun());
+  }
+
+  Future<void> _firstOpenRun() async {
+    final budget = widget.engine.state.budget;
+    if (budget == null) return;
+    final prefs = AppServicesScope.of(context).prefs;
+    final month = thisMonth();
+    if (await prefs.readAutomationMonth(budget.id) == month) return;
+    await prefs.writeAutomationMonth(budget.id, month);
+    if (!mounted) return;
+    if (widget.engine.execute(RunAutomation(month: month)) is Accepted) {
+      setState(() {});
+    }
+  }
+
+  /// A run by hand, then this month's Suggestion Batch.
+  Future<void> _assign() {
+    widget.engine.execute(RunAutomation(month: thisMonth()));
+    return _open(AssignScreen(engine: widget.engine));
+  }
 
   Future<void> _open(Widget screen) async {
     await Navigator.of(context)
@@ -114,7 +143,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
                       ),
                     ],
                   ),
-                  _ReadyToAssignCard(amount: state.readyToAssign(thisMonth())),
+                  _ReadyToAssignCard(
+                    amount: state.readyToAssign(thisMonth()),
+                    onAssign: _assign,
+                  ),
                 ],
               ),
             ),
@@ -223,9 +255,10 @@ class _MonthSwitcher extends StatelessWidget {
 }
 
 class _ReadyToAssignCard extends StatelessWidget {
-  const _ReadyToAssignCard({required this.amount});
+  const _ReadyToAssignCard({required this.amount, required this.onAssign});
 
   final Money amount;
+  final VoidCallback onAssign;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -234,39 +267,55 @@ class _ReadyToAssignCard extends StatelessWidget {
       color: Palette.ink,
       borderRadius: BorderRadius.circular(16),
     ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      spacing: 4,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      spacing: 12,
       children: [
-        const Text(
-          'READY TO ASSIGN',
-          style: TextStyle(
-            fontSize: 12,
-            letterSpacing: 0.96,
-            color: Palette.heroLabel,
+        Expanded(child: _amount()),
+        FilledButton(
+          onPressed: onAssign,
+          style: FilledButton.styleFrom(
+            backgroundColor: Palette.heroAccent,
+            foregroundColor: Palette.onHeroAccent,
+            minimumSize: const Size(0, 44),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
           ),
+          child: const Text('Assign'),
         ),
-        Text(
-          amount.formatDollars(),
-          style: amountStyle(
-            fontSize: 34,
-            fontWeight: FontWeight.w600,
-            color: amount.isNegative
-                ? Palette.problemOnDark
-                : Palette.background,
-          ).copyWith(letterSpacing: -0.68),
-        ),
-        if (amount.isNegative)
-          const Text(
-            'Over-assigned',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: Palette.problemOnDark,
-            ),
-          ),
       ],
     ),
+  );
+
+  Widget _amount() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    spacing: 4,
+    children: [
+      const Text(
+        'READY TO ASSIGN',
+        style: TextStyle(
+          fontSize: 12,
+          letterSpacing: 0.96,
+          color: Palette.heroLabel,
+        ),
+      ),
+      Text(
+        amount.formatDollars(),
+        style: amountStyle(
+          fontSize: 34,
+          fontWeight: FontWeight.w600,
+          color: amount.isNegative ? Palette.problemOnDark : Palette.background,
+        ).copyWith(letterSpacing: -0.68),
+      ),
+      if (amount.isNegative)
+        const Text(
+          'Over-assigned',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: Palette.problemOnDark,
+          ),
+        ),
+    ],
   );
 }
 

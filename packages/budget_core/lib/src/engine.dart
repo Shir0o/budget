@@ -13,8 +13,10 @@ import 'hlc.dart';
 import 'money.dart';
 import 'review.dart';
 import 'sensitive_numbers.dart';
+import 'target.dart';
 
 part 'engine_accounts.dart';
+part 'engine_targets.dart';
 
 const _uuid = Uuid();
 
@@ -31,17 +33,19 @@ final class BudgetEngine {
     required this.actor,
     int Function()? nowMs,
   }) : _log = log,
+       _nowMs = nowMs ?? (() => DateTime.now().millisecondsSinceEpoch),
        _events = log.readAll().toList() {
     _state = BudgetState.replay(_events);
     final latest = _events.isEmpty
         ? null
         : _events.reduce((a, b) => a.hlc.compareTo(b.hlc) >= 0 ? a : b).hlc;
-    _clock = HlcClock(deviceId, nowMs: nowMs, last: latest);
+    _clock = HlcClock(deviceId, nowMs: _nowMs, last: latest);
   }
 
   final String deviceId;
   final Actor actor;
   final EventLog _log;
+  final int Function() _nowMs;
   final List<Event> _events;
   late final HlcClock _clock;
   late BudgetState _state;
@@ -60,8 +64,29 @@ final class BudgetEngine {
   BudgetState stateAsOf(CivilDate date) =>
       BudgetState.replay(eventsAsOf(_events, date));
 
+  /// Runs [command]. A [RunAutomation] is recorded with actor
+  /// `automation`. Reviewing an income line also starts an automation run
+  /// for the current month, as its own group (ticket 08).
   CommandResult execute(Command command) {
-    final result = _decide(command, _state, _Stamp(this));
+    final before = _state;
+    final result = _execute(command);
+    if (result is Accepted &&
+        command is! RunAutomation &&
+        _reviewsIncome(before, result.events)) {
+      final now = DateTime.fromMillisecondsSinceEpoch(_nowMs());
+      _execute(
+        RunAutomation(month: CalendarMonth.of(CivilDate.fromDateTime(now))),
+      );
+    }
+    return result;
+  }
+
+  CommandResult _execute(Command command) {
+    final stamp = _Stamp(
+      this,
+      command is RunAutomation ? Actor.automation : actor,
+    );
+    final result = _decide(command, _state, stamp);
     if (result is Accepted) {
       _log.append(result.events);
       _events.addAll(result.events);
@@ -74,13 +99,13 @@ final class BudgetEngine {
 
 /// Fills in the Event envelope for one command's group.
 final class _Stamp {
-  _Stamp(this._engine) : budgetId = _engine.state.budget?.id ?? newId();
+  _Stamp(this._engine, this.actor)
+    : budgetId = _engine.state.budget?.id ?? newId();
 
   final BudgetEngine _engine;
   final String budgetId;
   final String groupId = newId();
-
-  Actor get actor => _engine.actor;
+  final Actor actor;
 
   Event event(String type, Map<String, Object?> payload, {Actor? actor}) =>
       Event(
@@ -88,7 +113,7 @@ final class _Stamp {
         budgetId: budgetId,
         deviceId: _engine.deviceId,
         hlc: _engine._clock.tick(),
-        actor: actor ?? _engine.actor,
+        actor: actor ?? this.actor,
         groupId: groupId,
         type: type,
         payload: payload,
@@ -290,6 +315,18 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
         for (final (type, payload) in compensation.events)
           stamp.event(type, payload, actor: Actor.revert),
       ]);
+    case SetTarget():
+      return _setTarget(command, state, stamp);
+    case ClearTarget():
+      return _clearTarget(command, state, stamp);
+    case SetAutomationMode():
+      return _setAutomationMode(command, state, stamp);
+    case SetPriority():
+      return _setPriority(command, state, stamp);
+    case AcceptSuggestions():
+      return _acceptSuggestions(command, state, stamp);
+    case RunAutomation():
+      return _runAutomation(command, state, stamp);
   }
 }
 
@@ -305,11 +342,13 @@ Event _assignment(
   _Stamp stamp,
   String categoryId,
   CalendarMonth month,
-  Money delta,
-) => stamp.event(EventType.assignmentChanged, {
+  Money delta, {
+  String? note,
+}) => stamp.event(EventType.assignmentChanged, {
   'category': categoryId,
   'month': month.toIso(),
   'deltaCents': delta.cents,
+  'note': ?note,
 });
 
 /// A one-line transaction whose money goes to Ready to Assign.

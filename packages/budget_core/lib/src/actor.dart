@@ -12,6 +12,9 @@ final class Actor {
   /// Compensating Events written by a revert (ticket 11).
   static const revert = Actor.fromValue('revert');
 
+  /// An automation run filling auto-mode Categories' Targets.
+  static const automation = Actor.fromValue('automation');
+
   final String value;
 
   /// A person on one of their devices (`user@…`), as opposed to bank sync,

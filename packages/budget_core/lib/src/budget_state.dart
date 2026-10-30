@@ -2,7 +2,9 @@ import 'civil_date.dart';
 import 'event.dart';
 import 'money.dart';
 import 'review.dart';
+import 'target.dart';
 
+part 'automation.dart';
 part 'budget_math.dart';
 
 /// The kinds of account (ticket 07). All but [tracking] are budget
@@ -278,6 +280,11 @@ final class BudgetState {
 
   /// Card Payment Category ids by card account id.
   final _cardPayment = <String, String>{};
+
+  /// Targets, Automation Modes and the priority order (ticket 08).
+  final _targets = <String, Target>{};
+  final _modes = <String, AutomationMode>{};
+  var _priority = <String>[];
 
   late final _Ledger _ledger;
 
@@ -568,6 +575,21 @@ final class BudgetState {
           CalendarMonth.parse(p['month'] as String),
           Money(p['deltaCents'] as int),
         );
+      case EventType.targetSet:
+        _targets[p['categoryId'] as String] = Target.fromJson(
+          (p['target'] as Map).cast<String, Object?>(),
+        );
+      case EventType.targetCleared:
+        _targets.remove(p['categoryId'] as String);
+      case EventType.automationModeSet:
+        // A null mode, as a revert writes, goes back to the default.
+        final id = p['categoryId'] as String;
+        final mode = p['mode'] as String?;
+        mode == null
+            ? _modes.remove(id)
+            : _modes[id] = AutomationMode.values.byName(mode);
+      case EventType.prioritySet:
+        _priority = (p['categoryIds'] as List).cast<String>();
     }
   }
 

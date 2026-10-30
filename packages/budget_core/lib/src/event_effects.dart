@@ -64,6 +64,15 @@ const deletedField = 'deleted';
 /// True while a Category is archived.
 const archivedField = 'archived';
 
+/// A Category's Target in its stored form, or null for none (ticket 08).
+const targetField = 'target';
+
+/// A Category's Automation Mode, or null for the default.
+const automationModeField = 'automationMode';
+
+/// The budget's priority order of Category ids.
+const priorityField = 'priority';
+
 /// A transaction's amount and lines together, as `{amountCents, lines}`.
 /// The whole line set is last writer wins (ticket 06).
 const splitField = 'split';
@@ -247,6 +256,32 @@ final Map<String, EventSpec> eventSpecs = {
   ),
   EventType.groupReverted: EventSpec((_) => const []),
   EventType.restoredToDate: EventSpec((_) => const []),
+  EventType.targetSet: EventSpec(
+    (p) => [
+      SetsFields(EntityRef.category(_id(p, 'categoryId')), {
+        targetField: p['target'],
+      }),
+    ],
+  ),
+  EventType.targetCleared: EventSpec(
+    (p) => [
+      SetsFields(EntityRef.category(_id(p, 'categoryId')), {targetField: null}),
+    ],
+  ),
+  EventType.automationModeSet: EventSpec(
+    (p) => [
+      SetsFields(EntityRef.category(_id(p, 'categoryId')), {
+        automationModeField: p['mode'],
+      }),
+    ],
+  ),
+  EventType.prioritySet: EventSpec(
+    (p) => [
+      SetsFields(const EntityRef(EntityKind.budget, ''), {
+        priorityField: p['categoryIds'],
+      }),
+    ],
+  ),
 };
 
 /// The Events that set [fields] on [entity], or null when one of them
@@ -294,6 +329,20 @@ List<PlannedEvent>? writeFields(EntityRef entity, Map<String, Object?> fields) {
           {key: entity.id},
         ));
       }
+      if (rest.containsKey(targetField)) {
+        final target = rest.remove(targetField);
+        events.add(
+          target == null
+              ? (EventType.targetCleared, {key: entity.id})
+              : (EventType.targetSet, {key: entity.id, 'target': target}),
+        );
+      }
+      if (rest.containsKey(automationModeField)) {
+        events.add((
+          EventType.automationModeSet,
+          {key: entity.id, 'mode': rest.remove(automationModeField)},
+        ));
+      }
       if (rest.isNotEmpty) return null;
       if (deleted != null) {
         final event = lifecycle(
@@ -323,7 +372,12 @@ List<PlannedEvent>? writeFields(EntityRef entity, Map<String, Object?> fields) {
         ),
       ];
     case EntityKind.budget:
-      return null;
+      if (deleted != null || rest.keys.any((k) => k != priorityField)) {
+        return null;
+      }
+      return [
+        (EventType.prioritySet, {'categoryIds': rest[priorityField] ?? []}),
+      ];
   }
 }
 
