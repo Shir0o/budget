@@ -9,8 +9,9 @@ import 'package:test/test.dart';
 /// A synthetic budget and a server over a loopback channel, so the stdio
 /// protocol is exercised without touching the database.
 Future<(ServerConnection, InMemoryMcpStore, String)> _connect() async {
+  final log = InMemoryEventLog();
   final engine = BudgetEngine(
-    log: InMemoryEventLog(),
+    log: log,
     deviceId: 'test-device',
     actor: Actor.userAndroid,
   );
@@ -30,6 +31,7 @@ Future<(ServerConnection, InMemoryMcpStore, String)> _connect() async {
     tools: BudgetTools(
       store: store,
       events: InMemoryEventSource({id: engine.events}),
+      writes: InMemoryBudgetWrites({id: log}),
       now: () => DateTime(2026, 11, 20, 10, 30),
     ),
   );
@@ -49,21 +51,24 @@ Future<(ServerConnection, InMemoryMcpStore, String)> _connect() async {
 }
 
 void main() {
-  test('lists the read tools and calls one over the protocol', () async {
+  test('lists the read and write tools and calls one', () async {
     final (connection, store, id) = await _connect();
 
     final listed = await connection.listTools();
     expect(listed.tools.map((tool) => tool.name), [
       for (final spec in BudgetTools.specs) spec.name,
+      for (final spec in BudgetTools.writeSpecs) spec.name,
     ]);
-    expect(
-      listed.tools.every((tool) => tool.toolAnnotations?.readOnlyHint == true),
-      isTrue,
-    );
-    // Write and Review tools aren't registered at all, so no client can see
-    // them, let alone call one.
+    final readOnly = {for (final spec in BudgetTools.specs) spec.name};
+    for (final tool in listed.tools) {
+      expect(
+        tool.toolAnnotations?.readOnlyHint,
+        readOnly.contains(tool.name),
+        reason: tool.name,
+      );
+    }
+    // A Review or delete tool is never registered, so no client can see one.
     final registered = {for (final tool in listed.tools) tool.name};
-    expect(registered.intersection(BudgetTools.writeToolNames), isEmpty);
     expect(registered.intersection(BudgetTools.neverToolNames), isEmpty);
 
     final result = await connection.callTool(

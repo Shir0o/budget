@@ -211,6 +211,7 @@ BudgetTools _tools(
         ),
       ]),
   events: InMemoryEventSource({seed.budgetId: seed.log.readAll()}),
+  writes: InMemoryBudgetWrites({seed.budgetId: seed.log}),
   now: () => DateTime(2026, 11, 20, 10, 30),
 );
 
@@ -218,7 +219,10 @@ Future<ToolResult> _call(
   BudgetTools tools,
   String name,
   Map<String, Object?> arguments,
-) => tools.call(ToolRequest(name, arguments), client: 'Claude Desktop');
+) => tools.call(
+  ToolRequest(name, arguments),
+  client: McpClient('Claude Desktop'),
+);
 
 Map<String, Object?> _arguments(_Seed seed) => {'budgetId': seed.budgetId};
 
@@ -492,25 +496,23 @@ void main() {
       expect(delete.isError, isTrue);
     });
 
-    test(
-      'Read-write still refuses writes this version does not ship',
-      () async {
-        final seed = _Seed();
-        final tools = _tools(seed, mode: McpMode.readWrite);
-        final write = await _call(
-          tools,
-          'create_transaction',
-          _arguments(seed),
-        );
-        expect(write.isError, isTrue);
-        expect(
-          write.content['error'],
-          contains('not available in this version'),
-        );
-        final review = await _call(tools, 'mark_reviewed', _arguments(seed));
-        expect(review.isError, isTrue);
-      },
-    );
+    test('Read-write writes, and Review marking is still refused', () async {
+      final seed = _Seed();
+      final tools = _tools(seed, mode: McpMode.readWrite);
+      final write = await _call(tools, 'create_transaction', {
+        ..._arguments(seed),
+        'accountId': seed.checking,
+        'date': '2026-11-20',
+        'amountCents': -1299,
+        'lines': [
+          {'amountCents': -1299},
+        ],
+      });
+      expect(write.isError, isFalse);
+      expect(write.content['actor'], 'mcp:Claude Desktop');
+      final review = await _call(tools, 'mark_reviewed', _arguments(seed));
+      expect(review.isError, isTrue);
+    });
   });
 
   group('arguments and audit', () {

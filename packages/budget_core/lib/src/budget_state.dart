@@ -640,6 +640,16 @@ final class BudgetState {
           cardAccountId: card,
         );
         if (card != null) _cardPayment[card] = id;
+      case EventType.categoryRenamed:
+        final category = _categories[p['categoryId'] as String];
+        if (category == null) return;
+        _categories[category.id] = Category(
+          id: category.id,
+          groupId: category.groupId,
+          name: p['name'] as String,
+          archived: category.archived,
+          cardAccountId: category.cardAccountId,
+        );
       case EventType.categoryArchived || EventType.categoryUnarchived:
         final category = _categories[p['categoryId'] as String];
         if (category == null) return;

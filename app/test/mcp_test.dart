@@ -6,15 +6,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// A synthetic budget, with its MCP settings in memory.
-Future<(BudgetEngine, AppServices)> _home() async {
-  final engine = BudgetEngine(
-    log: InMemoryEventLog(),
+/// A synthetic budget, with its MCP settings in memory. [server] false is a
+/// phone: no MCP binary runs there, so [AppServices.mcp] is null. Either way
+/// one AI app change is in the log.
+Future<(BudgetEngine, AppServices, InMemoryEventLog)> _home({
+  bool server = true,
+}) async {
+  final log = InMemoryEventLog();
+  final person = BudgetEngine(
+    log: log,
     deviceId: 'test-device',
     actor: Actor.userAndroid,
   );
-  engine.execute(const CreateBudget(name: 'Home'));
-  engine.execute(
+  person.execute(const CreateBudget(name: 'Home'));
+  person.execute(
     AddAccount(
       name: 'Checking',
       type: AccountType.checking,
@@ -22,11 +27,38 @@ Future<(BudgetEngine, AppServices)> _home() async {
       asOf: CivilDate(2026, 11, 1),
     ),
   );
-  final services = AppServices.inMemory();
-  await services.mcp!.register([
-    (id: engine.state.budget!.id, name: 'Home', store: 'budget-home.db'),
-  ]);
-  return (engine, services);
+  final group = person.execute(const CreateCategoryGroup(name: 'Everyday'));
+  final groupId =
+      (group as Accepted).events.single.payload['categoryGroupId'] as String;
+
+  // One AI app change, as the Mac's server writes it before the app opens.
+  BudgetEngine(
+    log: log,
+    deviceId: 'test-device',
+    actor: const Actor.fromValue('mcp:Claude Desktop'),
+  ).execute(CreateCategory(groupId: groupId, name: 'Coffee'));
+
+  // The app replays the log, so it sees the AI app's change and sync would
+  // bring it to a phone.
+  final engine = BudgetEngine(
+    log: log,
+    deviceId: 'test-device',
+    actor: Actor.userAndroid,
+  );
+  final services = server
+      ? AppServices.inMemory()
+      : AppServices(
+          keys: InMemoryBudgetKeyStore(),
+          prefs: InMemoryDevicePrefs(),
+          saver: InMemoryFileSaver(),
+          authenticator: FakeAuthenticator(),
+        );
+  if (server) {
+    await services.mcp!.register([
+      (id: engine.state.budget!.id, name: 'Home', store: 'budget-home.db'),
+    ], deviceId: engine.deviceId);
+  }
+  return (engine, services, log);
 }
 
 Future<void> _pump(
@@ -54,7 +86,7 @@ Future<void> _openMcp(WidgetTester tester) async {
 
 void main() {
   testWidgets('is Off by default and shares nothing', (tester) async {
-    final (engine, services) = await _home();
+    final (engine, services, _) = await _home();
     await _pump(tester, engine, services);
     await _openMcp(tester);
 
@@ -66,7 +98,7 @@ void main() {
   testWidgets('Read-only shows the client config and keeps the setting', (
     tester,
   ) async {
-    final (engine, services) = await _home();
+    final (engine, services, _) = await _home();
     await _pump(tester, engine, services);
     await _openMcp(tester);
 
@@ -77,6 +109,9 @@ void main() {
     final budget = (await services.mcp!.read()).single;
     expect(budget.book.mode, McpMode.readOnly);
     expect(budget.store, 'budget-${engine.state.budget!.id}.db');
+    // The registry knows which device's Events the binary writes, so sync
+    // still uploads them.
+    expect(budget.deviceId, engine.deviceId);
     // The config names the bundled binary, and the last-used line shows.
     final config = tester
         .widget<SelectableText>(find.byType(SelectableText))
@@ -116,8 +151,25 @@ void main() {
     expect(find.text('Read-only'), findsOneWidget);
   });
 
+  testWidgets('Read-write says what AI apps may change', (tester) async {
+    final (engine, services, _) = await _home();
+    final id = engine.state.budget!.id;
+    await services.mcp!.setMode(id, McpMode.readWrite);
+
+    await _pump(tester, engine, services);
+    await _openMcp(tester);
+
+    expect(
+      find.text(
+        'AI apps can read and change this budget. Nothing is deleted, and '
+        'only you mark a line Reviewed.',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('shows the last client that read the budget', (tester) async {
-    final (engine, services) = await _home();
+    final (engine, services, _) = await _home();
     final id = engine.state.budget!.id;
     await services.mcp!.recordUse(
       id,
@@ -136,7 +188,7 @@ void main() {
   });
 
   testWidgets('turning it Off hides the config again', (tester) async {
-    final (engine, services) = await _home();
+    final (engine, services, _) = await _home();
     final id = engine.state.budget!.id;
     await services.mcp!.setMode(id, McpMode.readWrite);
 
@@ -149,5 +201,52 @@ void main() {
 
     expect(find.text('Client config'), findsNothing);
     expect((await services.mcp!.read()).single.book.mode, McpMode.off);
+  });
+
+  testWidgets('MCP changes link opens Change History on the MCP Actor', (
+    tester,
+  ) async {
+    final (engine, services, _) = await _home();
+    await _pump(tester, engine, services);
+    await _openMcp(tester);
+
+    expect(find.text('Added category Coffee · Claude Desktop'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('mcp-history')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Change History'), findsOneWidget);
+    expect(find.text('MCP · Claude Desktop'), findsOneWidget);
+  });
+
+  testWidgets('on a phone it shows access, the last client and the link', (
+    tester,
+  ) async {
+    final (engine, services, _) = await _home(server: false);
+    expect(services.mcp, isNull);
+    await _pump(tester, engine, services);
+    await _openMcp(tester);
+
+    // No server here, so this device's access is Off, and the setting lives
+    // on the Mac.
+    expect(find.text('Off'), findsOneWidget);
+    expect(
+      find.text(
+        'AI apps connect through the Mac app, where Off, Read-only or '
+        'Read-write is chosen per budget. This device runs no server.',
+      ),
+      findsOneWidget,
+    );
+    // Last client, from what AI apps wrote and sync brought here.
+    expect(
+      find.textContaining('Last change by Claude Desktop at'),
+      findsOneWidget,
+    );
+    expect(find.text('Added category Coffee · Claude Desktop'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('mcp-history')));
+    await tester.pumpAndSettle();
+    expect(find.text('Change History'), findsOneWidget);
+    expect(find.text('MCP · Claude Desktop'), findsOneWidget);
+    expect(find.text('Added category Coffee'), findsOneWidget);
   });
 }
