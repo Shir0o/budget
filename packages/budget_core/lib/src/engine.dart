@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 
 import 'actor.dart';
+import 'bank_sync.dart';
 import 'budget_state.dart';
 import 'civil_date.dart';
 import 'commands.dart';
@@ -16,6 +17,7 @@ import 'sensitive_numbers.dart';
 import 'target.dart';
 
 part 'engine_accounts.dart';
+part 'engine_bank_sync.dart';
 part 'engine_schedules.dart';
 part 'engine_targets.dart';
 
@@ -83,10 +85,11 @@ final class BudgetEngine {
   }
 
   CommandResult _execute(Command command) {
-    final stamp = _Stamp(
-      this,
-      command is RunAutomation ? Actor.automation : actor,
-    );
+    final stamp = _Stamp(this, switch (command) {
+      RunAutomation() => Actor.automation,
+      ImportBankTransactions() => Actor.bankSync,
+      _ => actor,
+    });
     final result = _decide(command, _state, stamp);
     if (result is Accepted) {
       _log.append(result.events);
@@ -336,6 +339,8 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
       return _deleteSchedule(command, state, stamp);
     case EnterSchedule():
       return _enterSchedule(command, state, stamp);
+    case ImportBankTransactions():
+      return _importBankTransactions(command, state, stamp);
     case CreateBusinessTag(:final name, :final line, :final rule):
       final trimmed = name.trim();
       if (trimmed.isEmpty) return const Rejected(Rejection.nameRequired);

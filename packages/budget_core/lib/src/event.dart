@@ -66,13 +66,15 @@ abstract final class EventType {
 
   /// `{transactionId, accountId, date, payee, memo, cleared, amountCents,
   /// lines}`. Each line is `{lineId, amountCents, category, business,
-  /// businessTag, memo, recipient?, reviewed}`, where `category` is
-  /// [readyToAssignCategory] for income and null while uncategorized, and
-  /// `business` is `personal`, `business` (with `businessTag`) or null.
+  /// businessTag, memo, recipient?, note?, reviewed}`, where `category` is
+  /// [readyToAssignCategory] for income and null while uncategorized,
+  /// `business` is `personal`, `business` (with `businessTag`) or null, and
+  /// `note` is why bank sync put the line back in Review (ticket 10).
   /// Events written before ticket 03 lack memo, cleared and the line's
   /// business, memo and reviewed. One side of a transfer also has
   /// `transferAccountId` and `transferTransactionId`, and a card or
-  /// tracking account's Starting Balance has `startingBalance: true`.
+  /// tracking account's Starting Balance has `startingBalance: true`. A
+  /// bank fetch also has `bankId`, the SimpleFIN id it updates in place.
   static const transactionCreated = 'TransactionCreated';
 
   /// `{transactionId, fields: {payee?, date?, memo?, cleared?}}`. Each field

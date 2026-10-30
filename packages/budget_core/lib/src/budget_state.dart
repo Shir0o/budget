@@ -139,6 +139,7 @@ final class TransactionLine {
     this.business,
     this.memo = '',
     this.recipient,
+    this.note,
     this.reviewed = false,
   });
 
@@ -155,6 +156,11 @@ final class TransactionLine {
 
   /// Who received a gift line (Business Tag [giftsTag]). Null when unset.
   final String? recipient;
+
+  /// Why a bank fetch put the line back in Review, such as
+  /// `changed by bank: −$48.20 → −$15.00` (ticket 10). Null otherwise, and
+  /// cleared once a person reviews the line again.
+  final String? note;
 
   /// Only a person marks a line Reviewed (ADR 0003).
   /// See [reviewNeed] for what it takes.
@@ -174,6 +180,7 @@ final class Transaction {
     this.transferAccountId,
     this.transferTransactionId,
     this.startingBalance = false,
+    this.bankId,
   });
 
   final String id;
@@ -190,6 +197,11 @@ final class Transaction {
   /// A card or tracking account's opening balance. Its line has no
   /// Category and doesn't touch the budget (ticket 07 example 6).
   final bool startingBalance;
+
+  /// The SimpleFIN id a bank fetch imported this under, so a later fetch
+  /// updates it in place (ticket 10). Null for a transaction someone
+  /// entered by hand.
+  final String? bankId;
 
   bool get isTransfer => transferTransactionId != null;
 
@@ -219,6 +231,7 @@ final class Transaction {
     transferAccountId: transferAccountId,
     transferTransactionId: transferTransactionId,
     startingBalance: startingBalance,
+    bankId: bankId,
   );
 }
 
@@ -480,6 +493,7 @@ final class BudgetState {
           transferAccountId: p['transferAccountId'] as String?,
           transferTransactionId: p['transferTransactionId'] as String?,
           startingBalance: p['startingBalance'] as bool? ?? false,
+          bankId: p['bankId'] as String?,
         );
       case EventType.transactionFieldsSet:
         final id = p['transactionId'] as String;
@@ -646,6 +660,7 @@ final class BudgetState {
         ),
         memo: line['memo'] as String? ?? '',
         recipient: line['recipient'] as String?,
+        note: line['note'] as String?,
         reviewed: line['reviewed'] as bool? ?? false,
       ),
   ];

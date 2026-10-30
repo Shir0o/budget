@@ -15,6 +15,9 @@ final class Actor {
   /// An automation run filling auto-mode Categories' Targets.
   static const automation = Actor.fromValue('automation');
 
+  /// A hand-run bank fetch (ticket 10).
+  static const bankSync = Actor.fromValue('bank-sync');
+
   final String value;
 
   /// A person on one of their devices (`user@…`), as opposed to bank sync,
