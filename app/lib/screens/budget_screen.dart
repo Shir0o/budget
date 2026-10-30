@@ -5,6 +5,7 @@ import '../services.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'add_account_screen.dart';
+import 'budget_switcher.dart';
 import 'record_income_screen.dart';
 import 'settings_screen.dart';
 
@@ -45,11 +46,31 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          state.budget?.name ?? '',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
+                        Semantics(
+                          button: true,
+                          label: 'Switch budget',
+                          child: InkWell(
+                            onTap: () => showBudgetSwitcher(context),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(minHeight: 44),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                spacing: 6,
+                                children: [
+                                  Text(
+                                    state.budget?.name ?? '',
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const Icon(
+                                    Icons.keyboard_arrow_down,
+                                    size: 16,
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                         Row(

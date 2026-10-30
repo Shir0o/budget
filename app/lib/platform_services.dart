@@ -1,10 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:budget_core/budget_core.dart';
+import 'package:budget_store/budget_store.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
+import 'budget_library.dart';
 import 'services.dart';
 
 /// The real services: secure storage, the system file dialog and
@@ -33,6 +35,8 @@ final class SecureDevicePrefs implements DevicePrefs {
 
   static const _appLock = 'app-lock-enabled';
   static const _lastBackup = 'last-backup';
+  static const _budgetIds = 'budget-ids';
+  static const _lastBudgetId = 'last-budget-id';
 
   @override
   Future<bool> readAppLockEnabled() async =>
@@ -51,6 +55,23 @@ final class SecureDevicePrefs implements DevicePrefs {
   @override
   Future<void> writeLastBackup(CivilDate date) =>
       _storage.write(key: _lastBackup, value: date.toIso());
+
+  @override
+  Future<List<String>> readBudgetIds() async {
+    final joined = await _storage.read(key: _budgetIds);
+    return joined == null || joined.isEmpty ? [] : joined.split(',');
+  }
+
+  @override
+  Future<void> writeBudgetIds(List<String> ids) =>
+      _storage.write(key: _budgetIds, value: ids.join(','));
+
+  @override
+  Future<String?> readLastBudgetId() => _storage.read(key: _lastBudgetId);
+
+  @override
+  Future<void> writeLastBudgetId(String id) =>
+      _storage.write(key: _lastBudgetId, value: id);
 }
 
 final class SystemFileSaver implements FileSaver {
@@ -92,5 +113,28 @@ final class LocalAuthenticator implements Authenticator {
       // Cancelled, locked out, or nothing enrolled: the person stays locked.
       return false;
     }
+  }
+}
+
+/// One SQLCipher file per budget in [directory], each under its own store
+/// key kept in secure storage.
+final class SqlCipherBudgetStorage implements BudgetStorage {
+  const SqlCipherBudgetStorage(this._storage, {required this.directory});
+
+  final FlutterSecureStorage _storage;
+  final String directory;
+
+  @override
+  Future<EventLog> openLog(String budgetId) async {
+    final name = 'store-key:$budgetId';
+    var keyHex = await _storage.read(key: name);
+    if (keyHex == null) {
+      keyHex = BudgetKey.generate().toHex();
+      await _storage.write(key: name, value: keyHex);
+    }
+    return SqlCipherEventLog.open(
+      '$directory/budget-$budgetId.db',
+      keyHex: keyHex,
+    );
   }
 }
