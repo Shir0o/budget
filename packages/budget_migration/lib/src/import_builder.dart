@@ -399,17 +399,33 @@ ImportPlan buildImportPlan({
 
 /// Commits [plan] as one group with actor `import`. Throws [ImportBlocked]
 /// when the engine refuses it, so nothing is written.
-ImportCommit commitImport(BudgetEngine engine, ImportPlan plan) {
-  final result = engine.execute(CommitImport(plan.toBatch()));
-  return switch (result) {
-    Accepted(:final events) => ImportCommit(
-      groupId: events.first.groupId,
-      accounts: plan.accounts.length,
+ImportCommit commitImport(BudgetEngine engine, ImportPlan plan) =>
+    commitImportBatch(
+      engine,
+      plan.toBatch(),
       categories: plan.categories.where((c) => !c.income).length,
-      transactions: plan.transactions.length,
-      assignments: plan.assignments.length,
-      schedules: plan.schedules.length,
+    );
+
+/// Commits a prepared [batch] as one group with actor `import`, for an import
+/// whose accounts and Categories already exist, such as the YNAB items a
+/// person pulled in (ticket 14). Throws [ImportBlocked] when the engine
+/// refuses it, so nothing is written.
+ImportCommit commitImportBatch(
+  BudgetEngine engine,
+  ImportBatch batch, {
+  int? categories,
+}) {
+  final result = engine.execute(CommitImport(batch));
+  return switch (result) {
+    Accepted(:final events) when events.isNotEmpty => ImportCommit(
+      groupId: events.first.groupId,
+      accounts: batch.accounts.length,
+      categories: categories ?? batch.categories.length,
+      transactions: batch.transactions.length,
+      assignments: batch.assignments.length,
+      schedules: batch.schedules.length,
     ),
+    Accepted() => throw const ImportBlocked(Rejection.importPlanInvalid),
     Rejected(:final reason) => throw ImportBlocked(reason),
   };
 }
