@@ -460,19 +460,23 @@ final class BudgetState {
       _ledger.at(categoryId, month)?.creditOverspent ?? Money.zero;
 
   /// The single, global pool as it stands during [month] (ticket 07):
-  /// income lines in budget accounts, less uncategorized outflows
-  /// (ticket 09), less every Assignment in any month (future ones too),
-  /// less cash overspending from months before [month]. Negative means
-  /// over-assigned.
+  /// income lines and cash advances in budget accounts, less uncategorized
+  /// outflows (ticket 09), all dated in or before [month], less every
+  /// Assignment in any month (future ones too), less cash overspending
+  /// from months before [month]. Negative means over-assigned.
   Money readyToAssign(CalendarMonth month) {
     var total = Money.zero;
     for (final transaction in _transactions.values) {
       if (_accounts[transaction.accountId]?.type.onBudget == false) continue;
+      if (CalendarMonth.of(transaction.date).compareTo(month) > 0) continue;
       final counts = !transaction.isTransfer && !transaction.startingBalance;
+      final cashAdvance = _isCashAdvance(transaction);
       for (final line in transaction.lines) {
         if (line.category == readyToAssignCategory ||
             (counts && line.category == null && line.amount.isNegative)) {
           total += line.amount;
+        } else if (cashAdvance && line.category == null) {
+          total -= line.amount;
         }
       }
     }
@@ -496,6 +500,20 @@ final class BudgetState {
       null,
       (last, month) => last == null || month.compareTo(last) > 0 ? month : last,
     );
+  }
+
+  /// Whether [t] is the card side of a cash advance: a transfer out of a
+  /// card into a budget account that isn't a card. As in YNAB, it adds to
+  /// Ready to Assign and leaves the Card Payment Category alone, so the new
+  /// debt is unfunded.
+  bool _isCashAdvance(Transaction t) {
+    final to = _accounts[t.transferAccountId];
+    return t.isTransfer &&
+        t.amount.isNegative &&
+        _cardPayment.containsKey(t.accountId) &&
+        to != null &&
+        to.type.onBudget &&
+        !_cardPayment.containsKey(to.id);
   }
 
   /// [accountId]'s Card Payment Category, or null when it isn't a card.
@@ -619,9 +637,14 @@ final class BudgetState {
       case EventType.categoryRestored:
         _move(_removedCategories, _categories, p['categoryId'] as String);
       case EventType.reconciled:
+        // Only lines cleared before it in HLC order and dated on or before
+        // its date are locked. One a device clears after it stays cleared.
         final accountId = p['accountId'] as String;
+        final date = CivilDate.parse(p['date'] as String);
         for (final t in _transactions.values.toList()) {
-          if (t.accountId == accountId && t.cleared == ClearedStatus.cleared) {
+          if (t.accountId == accountId &&
+              t.cleared == ClearedStatus.cleared &&
+              t.date.compareTo(date) <= 0) {
             _transactions[t.id] = t._copyWith(
               cleared: ClearedStatus.reconciled,
             );

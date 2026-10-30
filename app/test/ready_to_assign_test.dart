@@ -1,4 +1,5 @@
 import 'package:budget/app.dart';
+import 'package:budget/widgets.dart';
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,7 +90,8 @@ void main() {
         name: 'Savings',
         type: AccountType.savings,
         startingBalance: const Money(41200),
-        asOf: CivilDate(2026, 11, 1),
+        // Dated today, so it is in the month the app opens on.
+        asOf: today(),
       ),
     );
 

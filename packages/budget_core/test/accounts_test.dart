@@ -267,6 +267,53 @@ void main() {
       expect(budget.available(budget.payment(visa)), const Money(2500));
       expect(state.unfundedDebt(visa, _nov), Money.zero);
     });
+
+    test('a cash advance is unfunded debt and new Ready to Assign', () {
+      final budget = _Budget();
+      final visa = budget.account('Visa', AccountType.creditCard, 0);
+
+      // As in YNAB: the cash lands in Ready to Assign ("Inflow from Debt
+      // Account") and Visa Payment doesn't move, so the debt is unfunded.
+      budget.transfer(visa, budget.checking, 10000);
+      var state = budget.state;
+      expect(state.balance(budget.checking), const Money(110000));
+      expect(state.balance(visa), const Money(-10000));
+      expect(budget.available(budget.payment(visa)), Money.zero);
+      expect(state.unfundedDebt(visa, _nov), const Money(10000));
+      expect(state.readyToAssign(_nov), const Money(110000));
+      expect(state.netWorth, const Money(100000));
+
+      // Funding the debt, then paying it off, leaves the budget whole.
+      budget.assign(budget.payment(visa), 10000);
+      budget.transfer(budget.checking, visa, 10000, day: 25);
+      state = budget.state;
+      expect(budget.available(budget.payment(visa)), Money.zero);
+      expect(state.unfundedDebt(visa, _nov), Money.zero);
+      expect(state.readyToAssign(_nov), const Money(100000));
+      expect(state.readyToAssign(_dec), const Money(100000));
+    });
+  });
+
+  group('Ready to Assign', () {
+    test('counts each transaction from the month of its date', () {
+      final budget = _Budget();
+      void enter(int cents, String? category, CivilDate date) => _accepted(
+        budget.engine.execute(
+          CreateTransaction(
+            accountId: budget.checking,
+            date: date,
+            amount: Money(cents),
+            lines: [LineInput(amount: Money(cents), category: category)],
+          ),
+        ),
+      );
+
+      enter(300000, readyToAssignCategory, CivilDate(2026, 12, 15));
+      enter(-2000, null, CivilDate(2026, 12, 16));
+      final state = budget.state;
+      expect(state.readyToAssign(_nov), const Money(100000));
+      expect(state.readyToAssign(_dec), const Money(398000));
+    });
   });
 
   group('Tracking accounts', () {

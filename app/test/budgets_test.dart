@@ -1,6 +1,7 @@
 import 'package:budget/app.dart';
 import 'package:budget/budget_library.dart';
 import 'package:budget/services.dart';
+import 'package:budget/widgets.dart';
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,7 +30,8 @@ Future<BudgetEngine> _saveBudget(
       name: 'Checking',
       type: AccountType.checking,
       startingBalance: balance,
-      asOf: CivilDate(2026, 11, 1),
+      // Dated today, so it is in the month the app opens on.
+      asOf: today(),
     ),
   );
   return library.commit(draft);

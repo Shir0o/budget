@@ -126,7 +126,8 @@ abstract final class EventType {
   static const categoryArchived = 'CategoryArchived';
 
   /// `{accountId, date, clearedBalanceCents}`. Every cleared transaction in
-  /// the account at that point becomes Reconciled (ticket 09).
+  /// the account at that point, dated on or before `date`, becomes
+  /// Reconciled (ticket 09).
   static const reconciled = 'Reconciled';
 
   /// `{category, month, deltaCents, note?}`, where `month` is `YYYY-MM`. A
