@@ -88,6 +88,16 @@ final class _Budget {
 
   TransactionLine line(String bankId) => transaction(bankId).lines.single;
 
+  /// Reconciles Checking at its cleared balance, so its cleared
+  /// transactions become Reconciled.
+  void reconcile() => run(
+    Reconcile(
+      accountId: checking,
+      date: _nov12,
+      bankBalance: state.clearedBalance(checking),
+    ),
+  );
+
   CommandResult review(String bankId) => execute(
     ReviewLine(
       transactionId: transaction(bankId).id,
@@ -214,7 +224,7 @@ void main() {
       expect(budget.bankTransactions, isEmpty);
     });
 
-    test('leaves the person’s split alone when the amount changes', () {
+    test('a split takes the new amount with the difference in Review', () {
       final budget = _Budget();
       budget.fetch([budget.entry(cents: -1000)]);
       final id = budget.transaction('sf-1').id;
@@ -228,21 +238,104 @@ void main() {
               category: budget.diningOut,
               business: const Personal(),
             ),
-            const LineInput(amount: Money(-400)),
+            LineInput(
+              amount: const Money(-400),
+              category: budget.diningOut,
+              business: const Personal(),
+            ),
           ],
         ),
       );
-      expect(budget.state.transaction(id)!.lines, hasLength(2));
+      expect(budget.state.reviewQueue, isEmpty);
 
       budget.fetch([budget.entry(cents: -1500)]);
 
       final transaction = budget.state.transaction(id)!;
-      // The split belongs to the person, so its amounts stay.
-      expect(transaction.amount, const Money(-1000));
+      expect(transaction.amount, const Money(-1500));
+      // The person's lines stay as they split them, and the difference waits
+      // in its own Unreviewed line, so the split still adds up.
       expect(transaction.lines.map((line) => line.amount), [
         const Money(-600),
         const Money(-400),
+        const Money(-500),
       ]);
+      expect(transaction.lines.take(2).map((line) => line.reviewed), [
+        isTrue,
+        isTrue,
+      ]);
+      final difference = transaction.lines.last;
+      expect(difference.category, isNull);
+      expect(difference.reviewed, isFalse);
+      expect(difference.note, 'changed by bank: −\$10.00 → −\$15.00');
+      expect(budget.state.reviewQueue.single.line.id, difference.id);
+
+      expect(
+        _rejected(budget.fetch([budget.entry(cents: -1500)])),
+        Rejection.noChange,
+      );
+    });
+
+    test('a re-fetch keeps the memo the person wrote', () {
+      final budget = _Budget();
+      budget.fetch([budget.entry(memo: 'Card hold')]);
+      final id = budget.transaction('sf-1').id;
+      budget.run(EditTransaction(transactionId: id, memo: 'Team lunch'));
+
+      budget.fetch([budget.entry(memo: 'Card hold')]);
+
+      expect(budget.state.transaction(id)!.memo, 'Team lunch');
+    });
+
+    test('a re-fetch never sends a cleared line back to pending', () {
+      final budget = _Budget();
+      budget.fetch([budget.entry()]);
+
+      expect(
+        _rejected(budget.fetch([budget.entry(pending: true)])),
+        Rejection.noChange,
+      );
+      expect(budget.transaction('sf-1').cleared, ClearedStatus.cleared);
+    });
+
+    test('a re-fetch leaves a Reconciled transaction Reconciled', () {
+      final budget = _Budget();
+      budget.fetch([budget.entry()]);
+      budget.reconcile();
+
+      expect(
+        _rejected(budget.fetch([budget.entry(payee: 'Corner Bistro #2')])),
+        Rejection.noChange,
+      );
+      final transaction = budget.transaction('sf-1');
+      expect(transaction.cleared, ClearedStatus.reconciled);
+      expect(transaction.payee, 'Corner Bistro');
+    });
+
+    test('a new bank amount on a Reconciled transaction waits for a '
+        'person', () {
+      final budget = _Budget();
+      budget.fetch([budget.entry(cents: -4820)]);
+      _accepted(budget.review('sf-1'));
+      budget.reconcile();
+
+      budget.fetch([budget.entry(cents: -1500)]);
+
+      // Editing a Reconciled transaction needs the person's confirmation
+      // (ticket 09), so the amount stays and Review shows the bank's.
+      final transaction = budget.transaction('sf-1');
+      expect(transaction.cleared, ClearedStatus.reconciled);
+      expect(transaction.amount, const Money(-4820));
+      final line = transaction.lines.single;
+      expect(line.amount, const Money(-4820));
+      expect(line.category, budget.diningOut);
+      expect(line.reviewed, isFalse);
+      expect(line.note, 'bank shows −\$15.00, Reconciled at −\$48.20');
+      expect(budget.state.reviewQueue.single.line.id, line.id);
+
+      expect(
+        _rejected(budget.fetch([budget.entry(cents: -1500)])),
+        Rejection.noChange,
+      );
     });
 
     test('keeps only the last four digits of a number in a bank payee', () {

@@ -73,11 +73,24 @@ CommandResult _importBankTransactions(
       continue;
     }
 
+    // Editing a Reconciled transaction needs the person's confirmation
+    // (ticket 09), so a fetch changes nothing on it. A new bank amount
+    // waits in Review for the person to apply.
+    if (existing.cleared == ClearedStatus.reconciled) {
+      if (existing.amount != entry.amount) {
+        events.addAll(_flagReconciled(stamp, existing, entry.amount));
+      }
+      continue;
+    }
+    // Only the bank's own fields change. The memo, Categories, business
+    // status and Review are the person's, and a fetch never takes a
+    // cleared line back to pending.
     final fields = <String, Object?>{
       if (existing.date != entry.date) 'date': entry.date.toIso(),
       if (existing.payee != payee) 'payee': payee,
-      if (existing.memo != memo) 'memo': memo,
-      if (existing.cleared != cleared) 'cleared': cleared.name,
+      if (existing.cleared == ClearedStatus.uncleared &&
+          cleared == ClearedStatus.cleared)
+        'cleared': cleared.name,
     };
     if (fields.isNotEmpty) {
       events.add(
@@ -87,28 +100,9 @@ CommandResult _importBankTransactions(
         }),
       );
     }
-    // A split is the person's own division of the amount, so a changed
-    // bank total leaves it alone.
-    if (existing.amount == entry.amount || existing.lines.length != 1) {
-      continue;
+    if (existing.amount != entry.amount) {
+      events.add(_bankAmountSet(stamp, existing, entry.amount));
     }
-    final line = existing.lines.single;
-    events.add(
-      stamp.event(EventType.transactionSplitSet, {
-        'transactionId': existing.id,
-        'amountCents': entry.amount.cents,
-        'lines': [
-          {
-            ..._storedLine(line),
-            'amountCents': entry.amount.cents,
-            // The person confirmed the old amount, so ask again.
-            'reviewed': false,
-            if (line.reviewed || line.note != null)
-              'note': bankChangeNote(line.amount, entry.amount),
-          },
-        ],
-      }),
-    );
   }
 
   // Step 3: a pending charge this fetch covered and no longer reports is
@@ -158,27 +152,75 @@ List<Event> _replacePending(
       },
     }),
   ];
-  if (pending.amount == entry.amount || pending.lines.length != 1) {
-    return events;
+  if (pending.amount != entry.amount) {
+    events.add(_bankAmountSet(stamp, pending, entry.amount));
   }
-  final line = pending.lines.single;
-  events.add(
+  return events;
+}
+
+/// The Event that gives [transaction] the bank's new [amount] and sends it
+/// back to Review. A single line takes the amount. A split keeps the
+/// person's lines and puts the difference in a new Unreviewed line, so the
+/// lines still sum to the amount.
+Event _bankAmountSet(_Stamp stamp, Transaction transaction, Money amount) {
+  final note = bankChangeNote(transaction.amount, amount);
+  final List<Map<String, Object?>> lines;
+  if (transaction.lines.length == 1) {
+    final line = transaction.lines.single;
+    lines = [
+      {
+        ..._storedLine(line),
+        'amountCents': amount.cents,
+        // The person confirmed the old amount, so ask again.
+        'reviewed': false,
+        if (line.reviewed || line.note != null) 'note': note,
+      },
+    ];
+  } else {
+    lines = [
+      for (final line in transaction.lines)
+        {..._storedLine(line), 'note': ?line.note},
+      {
+        'lineId': newId(),
+        'amountCents': (amount - transaction.amount).cents,
+        'category': null,
+        'memo': '',
+        'reviewed': false,
+        'note': note,
+      },
+    ];
+  }
+  return stamp.event(EventType.transactionSplitSet, {
+    'transactionId': transaction.id,
+    'amountCents': amount.cents,
+    'lines': lines,
+  });
+}
+
+/// The Events that put a Reconciled [transaction] the bank now reports as
+/// [amount] back in Review, its amount unchanged, until a person confirms
+/// an edit. None when it already waits there.
+List<Event> _flagReconciled(
+  _Stamp stamp,
+  Transaction transaction,
+  Money amount,
+) {
+  final note =
+      'bank shows ${amount.formatDollars()}, '
+      'Reconciled at ${transaction.amount.formatDollars()}';
+  if (transaction.lines.every((line) => !line.reviewed && line.note == note)) {
+    return const [];
+  }
+  return [
     stamp.event(EventType.transactionSplitSet, {
-      'transactionId': pending.id,
-      'amountCents': entry.amount.cents,
+      'transactionId': transaction.id,
+      'amountCents': transaction.amount.cents,
       'lines': [
-        {
-          ..._storedLine(line),
-          'amountCents': entry.amount.cents,
-          // The person confirmed the old amount, so ask again.
-          'reviewed': false,
-          if (line.reviewed || line.note != null)
-            'note': bankChangeNote(line.amount, entry.amount),
-        },
+        for (final line in transaction.lines)
+          {..._storedLine(line), 'reviewed': false, 'note': note},
       ],
     }),
-  );
-  return events;
+  ];
 }
 
 /// A new Unreviewed transaction for [entry], with actor `bank-sync`. No
