@@ -13,16 +13,23 @@ part 'history_restore.dart';
 /// [before] is null for something new; [after] is null when there is no
 /// single after value to show.
 final class HistoryChange {
-  const HistoryChange(this.label, {this.before, this.after});
+  const HistoryChange(this.label, {this.before, this.after, this.note});
 
   /// What changed, such as `Memo` or `Groceries · Nov 2026`.
   final String label;
   final String? before;
   final String? after;
 
+  /// Why this value lost, such as [overwrittenBySync]. Null when it stands.
+  final String? note;
+
   @override
-  String toString() => '$label: $before → $after';
+  String toString() =>
+      '$label: $before → $after${note == null ? '' : ' ($note)'}';
 }
+
+/// The note on a value another device's Event replaced (ticket 06).
+const overwrittenBySync = 'overwritten by sync';
 
 /// One Event group in Change History (ticket 11).
 final class HistoryEntry {
@@ -196,6 +203,7 @@ final class ChangeHistory {
     for (final event in ordered) {
       history._record(event);
     }
+    history._markOverwritten();
     for (final group in history._groups.values) {
       history._entries[group.id] = history._entry(group);
     }
@@ -346,6 +354,41 @@ final class ChangeHistory {
     group.records.add(record);
     _records.add(record);
   }
+
+  /// For each record, the fields a later Event from another device replaced.
+  final _overwritten = <_Record, Set<String>>{};
+
+  /// Marks every value another device's Event replaced, so the losing value
+  /// reads as [overwrittenBySync] (ticket 06). The rule is the merge rule
+  /// itself: per field the highest HLC wins, and a write on another device
+  /// means the value came from sync rather than from this device's hand.
+  void _markOverwritten() {
+    final last = <(EntityRef, String), _Record>{};
+    for (final record in _records) {
+      for (final applied in record.applied ?? const <_Applied>[]) {
+        switch (applied.effect) {
+          case Creates(:final entity, :final fields):
+            for (final field in fields.keys) {
+              last[(entity, field)] = record;
+            }
+          case SetsFields(:final entity, :final fields):
+            for (final MapEntry(key: field, value: _) in fields.entries) {
+              final previous = last[(entity, field)];
+              if (previous != null &&
+                  previous.event.deviceId != record.event.deviceId) {
+                (_overwritten[previous] ??= {}).add(field);
+              }
+              last[(entity, field)] = record;
+            }
+          // Deltas add up instead of replacing, so nothing is overwritten.
+          case AddsDelta():
+        }
+      }
+    }
+  }
+
+  String? _note(_Record record, String field) =>
+      _overwritten[record]?.contains(field) == true ? overwrittenBySync : null;
 
   /// Builds [group]'s entry. Groups it reverts were built before it.
   HistoryEntry _entry(_Group group) {
@@ -640,6 +683,7 @@ final class ChangeHistory {
             label,
             a.before[splitField],
             fields[splitField],
+            note: _note(record, splitField),
           );
         }
         final names = [for (final field in fields.keys) field];
@@ -653,6 +697,7 @@ final class ChangeHistory {
                 _fieldName(field),
                 before: _show(field, a.before[field]),
                 after: _show(field, fields[field]),
+                note: _note(record, field),
               ),
           ],
         );
@@ -672,7 +717,12 @@ final class ChangeHistory {
     }
   }
 
-  _Described _describeSplit(String label, Object? before, Object? after) {
+  _Described _describeSplit(
+    String label,
+    Object? before,
+    Object? after, {
+    String? note,
+  }) {
     final b = before as Map?;
     final a = after as Map;
     final bLines = (b?['lines'] as List?)?.cast<Map>() ?? const [];
@@ -686,6 +736,7 @@ final class ChangeHistory {
           'Amount',
           before: b == null ? null : _signed(b['amountCents'] as int),
           after: _signed(a['amountCents'] as int),
+          note: note,
         ),
       );
     }
@@ -700,7 +751,7 @@ final class ChangeHistory {
         final (x, y) = (show(bLines.single), show(aLines.single));
         if (x == y) continue;
         changed.add(key);
-        changes.add(HistoryChange(name, before: x, after: y));
+        changes.add(HistoryChange(name, before: x, after: y, note: note));
       }
     } else if (_show(splitField, b) != _show(splitField, a) ||
         changes.isEmpty) {
@@ -710,6 +761,7 @@ final class ChangeHistory {
           'Lines',
           before: b == null ? null : _show(splitField, b),
           after: _show(splitField, a),
+          note: note,
         ),
       );
     }

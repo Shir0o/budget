@@ -1,4 +1,5 @@
 import 'package:budget_core/budget_core.dart';
+import 'package:budget_sync/budget_sync.dart';
 import 'package:flutter/material.dart';
 
 import '../services.dart';
@@ -9,6 +10,7 @@ import 'business_report_screen.dart';
 import 'business_tags_screen.dart';
 import 'categories_screen.dart';
 import 'connect_bank_screen.dart';
+import 'encrypted_sync_screen.dart';
 import 'export_screen.dart';
 import 'forecast_screen.dart';
 import 'schedules_screen.dart';
@@ -30,10 +32,27 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  var _syncBook = SyncBook.off;
+
+  @override
+  void initState() {
+    super.initState();
+    _readSyncBook();
+  }
+
+  Future<void> _readSyncBook() async {
+    final budget = widget.engine.state.budget;
+    if (budget == null) return;
+    final book = await widget.services.prefs.readSyncBook(budget.id);
+    if (mounted) setState(() => _syncBook = book);
+  }
+
   Future<void> _open(Widget screen) async {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
-    setState(() {}); // The App lock row's value may have changed.
+    // The App lock and Encrypted sync rows' values may have changed.
+    await _readSyncBook();
+    if (mounted) setState(() {});
   }
 
   List<SettingsSection> _sections() => [
@@ -97,6 +116,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           label: 'App lock',
           value: widget.services.appLockEnabled.value ? 'On' : 'Off',
           onTap: () => _open(AppLockScreen(services: widget.services)),
+        ),
+        SettingsRow(
+          label: 'Encrypted sync',
+          value: _syncBook.enabled ? 'On' : 'Off',
+          onTap: () => _open(
+            EncryptedSyncScreen(
+              engine: widget.engine,
+              services: widget.services,
+            ),
+          ),
         ),
       ],
     ),

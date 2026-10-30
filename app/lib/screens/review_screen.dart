@@ -1,4 +1,5 @@
 import 'package:budget_core/budget_core.dart';
+import 'package:budget_sync/budget_sync.dart';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -77,6 +78,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
   Widget build(BuildContext context) {
     final state = widget.engine.state;
     final queue = state.reviewQueue;
+    final attention = needsAttention(state);
     final item = queue.firstOrNull;
     if (item != null) _load(item);
     return Scaffold(
@@ -120,6 +122,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 ],
               ),
             ),
+            if (attention.isNotEmpty) ...[
+              _NeedsAttention(items: attention),
+              const SizedBox(height: 12),
+            ],
             if (item == null)
               const CardBox(
                 padding: EdgeInsets.all(18),
@@ -546,6 +552,59 @@ class _UpNext extends StatelessWidget {
                   style: amountStyle(fontSize: 14),
                 ),
               ],
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+/// What a merge left broken, kept in Review until a person repairs it
+/// (ticket 06). Nothing here is fixed silently.
+class _NeedsAttention extends StatelessWidget {
+  const _NeedsAttention({required this.items});
+
+  final List<NeedsAttention> items;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('review-needs-attention'),
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+    decoration: BoxDecoration(
+      color: Palette.problemPill,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 6,
+      children: [
+        Row(
+          spacing: 8,
+          children: [
+            const Icon(
+              Icons.report_outlined,
+              size: 18,
+              color: Palette.problemText,
+            ),
+            Text(
+              items.length == 1
+                  ? 'Needs attention'
+                  : '${items.length} need attention',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Palette.problemText,
+              ),
+            ),
+          ],
+        ),
+        for (final item in items)
+          Text(
+            item.message,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Palette.problemText,
+              height: 1.4,
             ),
           ),
       ],

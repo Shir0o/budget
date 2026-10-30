@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:budget_core/budget_core.dart';
 import 'package:budget_simplefin/budget_simplefin.dart';
+import 'package:budget_sync/budget_sync.dart';
 import 'package:flutter/widgets.dart';
 
 /// Where each budget's [BudgetKey] is kept. The real one is Android
@@ -37,6 +38,11 @@ abstract interface class DevicePrefs {
   /// URL, and none of it is part of the budget.
   Future<SimpleFinBook> readSimpleFinBook();
   Future<void> writeSimpleFinBook(SimpleFinBook book);
+
+  /// This device's sync state for [budgetId] (ticket 12). It is not an
+  /// Event, so it never syncs, and sync is off until it says otherwise.
+  Future<SyncBook> readSyncBook(String budgetId);
+  Future<void> writeSyncBook(String budgetId, SyncBook book);
 }
 
 /// Hands a finished file to the person to save where they choose.
@@ -71,9 +77,11 @@ final class AppServices {
     required this.saver,
     required this.authenticator,
     SimpleFinTransport? simpleFin,
+    DriveGateway? drive,
     bool appLockEnabled = false,
   }) : appLockEnabled = ValueNotifier(appLockEnabled),
-       simpleFin = SimpleFinClient(simpleFin ?? FakeSimpleFinTransport());
+       simpleFin = SimpleFinClient(simpleFin ?? FakeSimpleFinTransport()),
+       drive = drive ?? InMemoryDrive();
 
   /// In-memory services for tests and previews.
   factory AppServices.inMemory() => AppServices(
@@ -91,6 +99,10 @@ final class AppServices {
   /// The SimpleFIN Bridge client. Tests answer through their own
   /// [SimpleFinTransport], so nothing goes to the network.
   final SimpleFinClient simpleFin;
+
+  /// The Google Drive app data folder sync writes to. Tests and previews
+  /// keep it in memory, so nothing leaves the device.
+  final DriveGateway drive;
 
   /// Whether the app lock is on. Read at launch so the first frame is
   /// already locked.
@@ -149,6 +161,7 @@ final class InMemoryDevicePrefs implements DevicePrefs {
   var _budgetIds = <String>[];
   String? _lastBudgetId;
   final _automationMonths = <String, CalendarMonth>{};
+  final _syncBooks = <String, SyncBook>{};
   SimpleFinBook _simpleFin = const SimpleFinBook();
 
   @override
@@ -192,6 +205,14 @@ final class InMemoryDevicePrefs implements DevicePrefs {
   @override
   Future<void> writeSimpleFinBook(SimpleFinBook book) async =>
       _simpleFin = book;
+
+  @override
+  Future<SyncBook> readSyncBook(String budgetId) async =>
+      _syncBooks[budgetId] ?? SyncBook.off;
+
+  @override
+  Future<void> writeSyncBook(String budgetId, SyncBook book) async =>
+      _syncBooks[budgetId] = book;
 }
 
 /// Keeps "saved" files in [saved] instead of writing them anywhere.
