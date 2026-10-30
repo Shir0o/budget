@@ -1,0 +1,176 @@
+import 'dart:typed_data';
+
+import 'package:budget_core/budget_core.dart';
+import 'package:flutter/widgets.dart';
+
+/// Where each budget's [BudgetKey] is kept. The real one is Android
+/// Keystore-backed secure storage; the key never goes in the Event log.
+abstract interface class BudgetKeyStore {
+  /// The key for [budgetId], created on first use.
+  Future<BudgetKey> keyFor(String budgetId);
+}
+
+/// Settings that belong to this device, not to the budget, so they are not
+/// Events and never sync.
+abstract interface class DevicePrefs {
+  Future<bool> readAppLockEnabled();
+  Future<void> writeAppLockEnabled(bool enabled);
+  Future<CivilDate?> readLastBackup();
+  Future<void> writeLastBackup(CivilDate date);
+}
+
+/// Hands a finished file to the person to save where they choose.
+abstract interface class FileSaver {
+  /// Returns false if they backed out.
+  Future<bool> save({
+    required String fileName,
+    required Uint8List bytes,
+    required String mimeType,
+  });
+}
+
+/// The phone's fingerprint or screen-lock check.
+abstract interface class Authenticator {
+  /// Whether this phone has a fingerprint or screen lock to check against.
+  Future<bool> isSupported();
+
+  /// Returns false if the check failed or was cancelled. With
+  /// [biometricOnly] false, the phone's screen lock also counts.
+  Future<bool> authenticate({
+    required String reason,
+    required bool biometricOnly,
+  });
+}
+
+/// Everything the app needs from the device, in one place so tests and
+/// previews can swap it.
+final class AppServices {
+  AppServices({
+    required this.keys,
+    required this.prefs,
+    required this.saver,
+    required this.authenticator,
+    bool appLockEnabled = false,
+  }) : appLockEnabled = ValueNotifier(appLockEnabled);
+
+  /// In-memory services for tests and previews.
+  factory AppServices.inMemory() => AppServices(
+    keys: InMemoryBudgetKeyStore(),
+    prefs: InMemoryDevicePrefs(),
+    saver: InMemoryFileSaver(),
+    authenticator: FakeAuthenticator(),
+  );
+
+  final BudgetKeyStore keys;
+  final DevicePrefs prefs;
+  final FileSaver saver;
+  final Authenticator authenticator;
+
+  /// Whether the app lock is on. Read at launch so the first frame is
+  /// already locked.
+  final ValueNotifier<bool> appLockEnabled;
+
+  var _holds = 0;
+
+  /// True while [keepUnlocked] is running.
+  bool get lockHeld => _holds > 0;
+
+  Future<void> setAppLockEnabled(bool enabled) async {
+    await prefs.writeAppLockEnabled(enabled);
+    appLockEnabled.value = enabled;
+  }
+
+  /// Runs [action] without the app lock engaging if the app goes to the
+  /// background meanwhile, as it does while the phone's file dialog is open.
+  Future<T> keepUnlocked<T>(Future<T> Function() action) async {
+    _holds++;
+    try {
+      return await action();
+    } finally {
+      _holds--;
+    }
+  }
+}
+
+/// Gives every screen below it the app's [AppServices].
+class AppServicesScope extends InheritedWidget {
+  const AppServicesScope({
+    super.key,
+    required this.services,
+    required super.child,
+  });
+
+  final AppServices services;
+
+  static AppServices of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<AppServicesScope>()!.services;
+
+  @override
+  bool updateShouldNotify(AppServicesScope old) => services != old.services;
+}
+
+final class InMemoryBudgetKeyStore implements BudgetKeyStore {
+  final _keys = <String, BudgetKey>{};
+
+  @override
+  Future<BudgetKey> keyFor(String budgetId) async =>
+      _keys.putIfAbsent(budgetId, BudgetKey.generate);
+}
+
+final class InMemoryDevicePrefs implements DevicePrefs {
+  bool _appLock = false;
+  CivilDate? _lastBackup;
+
+  @override
+  Future<bool> readAppLockEnabled() async => _appLock;
+
+  @override
+  Future<void> writeAppLockEnabled(bool enabled) async => _appLock = enabled;
+
+  @override
+  Future<CivilDate?> readLastBackup() async => _lastBackup;
+
+  @override
+  Future<void> writeLastBackup(CivilDate date) async => _lastBackup = date;
+}
+
+/// Keeps "saved" files in [saved] instead of writing them anywhere.
+final class InMemoryFileSaver implements FileSaver {
+  /// Set false to act as if the person backed out of the file dialog.
+  bool accepts = true;
+
+  final saved = <String, Uint8List>{};
+
+  @override
+  Future<bool> save({
+    required String fileName,
+    required Uint8List bytes,
+    required String mimeType,
+  }) async {
+    if (accepts) saved[fileName] = bytes;
+    return accepts;
+  }
+}
+
+/// An [Authenticator] whose answers are set by the caller.
+final class FakeAuthenticator implements Authenticator {
+  FakeAuthenticator({this.supported = true, this.succeeds = true});
+
+  bool supported;
+  bool succeeds;
+
+  /// The `biometricOnly` value of each call, in order.
+  final calls = <bool>[];
+
+  @override
+  Future<bool> isSupported() async => supported;
+
+  @override
+  Future<bool> authenticate({
+    required String reason,
+    required bool biometricOnly,
+  }) async {
+    calls.add(biometricOnly);
+    return succeeds;
+  }
+}

@@ -1,10 +1,12 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../services.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'add_account_screen.dart';
 import 'record_income_screen.dart';
+import 'settings_screen.dart';
 
 /// The Budget screen (canvas: Main), showing Ready to Assign. Categories,
 /// Assign, Review and the bottom navigation arrive with later tickets.
@@ -50,12 +52,32 @@ class _BudgetScreenState extends State<BudgetScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        Text(
-                          formatMonth(today()),
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        Row(
+                          children: [
+                            Text(
+                              formatMonth(today()),
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => _open(
+                                SettingsScreen(
+                                  engine: widget.engine,
+                                  services: AppServicesScope.of(context),
+                                ),
+                              ),
+                              tooltip: 'Settings',
+                              icon: const Icon(Icons.settings_outlined),
+                              color: Palette.ink,
+                              iconSize: 22,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 44,
+                                height: 44,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
