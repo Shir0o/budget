@@ -120,6 +120,35 @@ void main() {
     expect(seed.state.clearedBalance(adjustment.accountId), const Money(47500));
   });
 
+  testWidgets('a cleared charge dated after today is left out', (tester) async {
+    final seed = _Seed();
+    final created = seed.engine.execute(
+      CreateTransaction(
+        accountId: seed.state.accounts.single.id,
+        date: today().addDays(3),
+        amount: const Money(-4000),
+        lines: [const LineInput(amount: Money(-4000))],
+      ),
+    ) as Accepted;
+    final later = created.events.single.payload['transactionId'] as String;
+    seed.engine.execute(
+      EditTransaction(transactionId: later, cleared: ClearedStatus.cleared),
+    );
+    await _pump(tester, seed.app());
+    await _openReconcile(tester);
+
+    expect(find.text('Check 2 cleared transactions'), findsOneWidget);
+    await _enterBalance(tester, '480.00');
+    expect(find.text('480.00'), findsNWidgets(3)); // Field, Cleared, Bank.
+    await _tap(tester, find.widgetWithText(FilledButton, 'Reconcile'));
+
+    expect(
+      seed.state.transaction(seed.purchase)!.cleared,
+      ClearedStatus.reconciled,
+    );
+    expect(seed.state.transaction(later)!.cleared, ClearedStatus.cleared);
+  });
+
   testWidgets('editing a reconciled transaction asks first', (tester) async {
     final seed = _Seed();
     seed.engine.execute(

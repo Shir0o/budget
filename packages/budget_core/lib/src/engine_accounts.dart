@@ -224,7 +224,8 @@ CommandResult _reconcile(Reconcile command, BudgetState state, _Stamp stamp) {
     return const Rejected(Rejection.unknownAccount);
   }
   final difference =
-      command.bankBalance - state.clearedBalance(command.accountId);
+      command.bankBalance -
+      state.clearedBalance(command.accountId, asOf: command.date);
   final adjust = difference != Money.zero;
   if (adjust && !command.addAdjustment) {
     return const Rejected(Rejection.reconcileMismatch);

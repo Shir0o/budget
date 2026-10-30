@@ -139,6 +139,76 @@ void main() {
     expect(budget.state.transaction(budget.cleared)!.payee, 'Cafe');
   });
 
+  group('A cleared line dated after the reconcile date', () {
+    /// Checking at 500.00 cleared through Oct 31, plus a 40.00 cleared
+    /// charge dated Nov 2.
+    (BudgetEngine, String, String) budget() {
+      final engine = BudgetEngine(
+        log: InMemoryEventLog(),
+        deviceId: 'device-a',
+        actor: Actor.userAndroid,
+      );
+      engine.execute(const CreateBudget(name: 'Home'));
+      engine.execute(
+        AddAccount(
+          name: 'Checking',
+          type: AccountType.checking,
+          startingBalance: const Money(50000),
+          asOf: CivilDate(2026, 10, 1),
+        ),
+      );
+      final checking = engine.state.accounts.single.id;
+      final created = engine.execute(
+        CreateTransaction(
+          accountId: checking,
+          date: CivilDate(2026, 11, 2),
+          amount: const Money(-4000),
+          lines: const [LineInput(amount: Money(-4000))],
+        ),
+      ) as Accepted;
+      final charge = created.events.single.payload['transactionId'] as String;
+      engine.execute(
+        EditTransaction(transactionId: charge, cleared: ClearedStatus.cleared),
+      );
+      return (engine, checking, charge);
+    }
+
+    test('is left out of the compared balance', () {
+      final (engine, checking, charge) = budget();
+      final oct31 = CivilDate(2026, 10, 31);
+      expect(
+        engine.state.clearedBalance(checking, asOf: oct31),
+        const Money(50000),
+      );
+
+      final result = engine.execute(
+        Reconcile(
+          accountId: checking,
+          date: oct31,
+          bankBalance: const Money(50000),
+        ),
+      );
+
+      expect((result as Accepted).events.map((e) => e.type), [
+        EventType.reconciled,
+      ]);
+      expect(engine.state.transaction(charge)!.cleared, ClearedStatus.cleared);
+    });
+
+    test('is left out of the adjustment', () {
+      final (engine, checking, _) = budget();
+      final result = engine.execute(
+        Reconcile(
+          accountId: checking,
+          date: CivilDate(2026, 10, 31),
+          bankBalance: const Money(49000),
+          addAdjustment: true,
+        ),
+      ) as Accepted;
+      expect(result.events.first.payload['amountCents'], -1000);
+    });
+  });
+
   group('Merging two devices (ticket 06)', () {
     /// Copies of the budget on a phone and a Mac, with each clock [phoneMs]
     /// and [macMs] past the shared log.

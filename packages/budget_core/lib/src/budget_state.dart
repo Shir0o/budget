@@ -392,9 +392,14 @@ final class BudgetState {
   /// The sum of [accountId]'s transactions.
   Money balance(String accountId) => _sum(accountId, (_) => true);
 
-  /// The sum of [accountId]'s cleared and reconciled transactions.
-  Money clearedBalance(String accountId) =>
-      _sum(accountId, (t) => t.cleared != ClearedStatus.uncleared);
+  /// The sum of [accountId]'s cleared and reconciled transactions, only
+  /// those dated on or before [asOf] when given.
+  Money clearedBalance(String accountId, {CivilDate? asOf}) => _sum(
+    accountId,
+    (t) =>
+        t.cleared != ClearedStatus.uncleared &&
+        (asOf == null || t.date.compareTo(asOf) <= 0),
+  );
 
   Money _sum(String accountId, bool Function(Transaction) include) {
     var total = Money.zero;
