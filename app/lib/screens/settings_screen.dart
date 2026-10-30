@@ -1,0 +1,91 @@
+import 'package:budget_core/budget_core.dart';
+import 'package:flutter/material.dart';
+
+import '../services.dart';
+import '../settings_widgets.dart';
+import '../theme.dart';
+import 'app_lock_screen.dart';
+import 'export_screen.dart';
+
+/// Settings (canvas: Settings). It lists only what exists today. A later
+/// ticket adds its row to the matching section in [_sections].
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({
+    super.key,
+    required this.engine,
+    required this.services,
+  });
+
+  final BudgetEngine engine;
+  final AppServices services;
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  Future<void> _open(Widget screen) async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => screen));
+    setState(() {}); // The App lock row's value may have changed.
+  }
+
+  List<SettingsSection> _sections() => [
+    SettingsSection(
+      title: 'Budget',
+      rows: [
+        SettingsRow(
+          label: 'Name',
+          value: widget.engine.state.budget?.name ?? '',
+        ),
+      ],
+    ),
+    SettingsSection(
+      title: 'Data',
+      rows: [
+        SettingsRow(
+          label: 'Export & backup',
+          value: 'CSV, JSON, backup',
+          onTap: () => _open(
+            ExportScreen(engine: widget.engine, services: widget.services),
+          ),
+        ),
+        SettingsRow(
+          label: 'App lock',
+          value: widget.services.appLockEnabled.value ? 'On' : 'Off',
+          onTap: () => _open(AppLockScreen(services: widget.services)),
+        ),
+      ],
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const BackHeader(title: 'Settings'),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              children: [
+                for (final section in _sections()) ...[
+                  SettingsCard(section: section),
+                  const SizedBox(height: 12),
+                ],
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    'No telemetry. Your data stays on your devices.',
+                    style: TextStyle(fontSize: 12, color: Palette.muted),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}

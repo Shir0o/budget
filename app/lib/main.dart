@@ -9,6 +9,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
+import 'platform_services.dart';
+import 'services.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +31,15 @@ Future<void> main() async {
     deviceId: deviceId,
     actor: Actor.userAndroid,
   );
-  runApp(BudgetApp(engine: engine));
+  final prefs = const SecureDevicePrefs(secrets);
+  final services = AppServices(
+    keys: const SecureBudgetKeyStore(secrets),
+    prefs: prefs,
+    saver: const SystemFileSaver(),
+    authenticator: LocalAuthenticator(),
+    appLockEnabled: await prefs.readAppLockEnabled(),
+  );
+  runApp(BudgetApp(engine: engine, services: services));
 }
 
 Future<String> _readOrCreate(
