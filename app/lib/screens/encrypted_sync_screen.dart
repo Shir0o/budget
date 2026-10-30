@@ -7,6 +7,8 @@ import '../settings_widgets.dart';
 import '../sync.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'pair_device_screen.dart';
+import 'recovery_phrase_screen.dart';
 
 /// Encrypted sync (canvas: Settings → Encrypted sync). While it is off it
 /// offers Turn on sync; once on it shows the devices and syncs by hand.
@@ -68,7 +70,12 @@ class _EncryptedSyncScreenState extends State<EncryptedSyncScreen> {
       _errors = [];
       _attention = [];
     });
-    if (enabled) await _sync();
+    if (enabled) {
+      await _sync();
+      if (!mounted) return;
+      // The phrase is shown once, right after sync is turned on (ticket 12).
+      await _showPhrase(requiresConfirmation: false);
+    }
   }
 
   Future<void> _sync() async {
@@ -257,6 +264,11 @@ class _EncryptedSyncScreenState extends State<EncryptedSyncScreen> {
                 child: Text(_busy ? 'Syncing…' : 'Sync now'),
               ),
               OutlinedButton(
+                key: const ValueKey('pair-device'),
+                onPressed: _busy ? null : _openPair,
+                child: const Text('Pair a device'),
+              ),
+              OutlinedButton(
                 key: const ValueKey('turn-off-sync'),
                 onPressed: _busy ? null : () => _confirmOff(),
                 child: const Text('Turn off sync'),
@@ -268,8 +280,115 @@ class _EncryptedSyncScreenState extends State<EncryptedSyncScreen> {
             ],
           ),
         ),
+        CardBox(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 10,
+            children: [
+              const Text(
+                'Budget Key',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+              const Text(
+                'The 24-word recovery phrase is the way back if you lose every '
+                'device. Rotate the key if a device is lost or stolen: the '
+                'budget is re-sealed, the old files are deleted, and the other '
+                'device has to pair again.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Palette.inkSoft,
+                  height: 1.45,
+                ),
+              ),
+              OutlinedButton(
+                key: const ValueKey('rotate-key'),
+                onPressed: _busy ? null : _rotate,
+                child: const Text('Rotate the key'),
+              ),
+            ],
+          ),
+        ),
       ],
     );
+  }
+
+  /// Pushes the phrase screen. It asks for a fingerprint unless this is the
+  /// first showing, right after sync was turned on or the key was rotated.
+  Future<void> _showPhrase({bool requiresConfirmation = true}) async {
+    final budget = widget.engine.state.budget;
+    if (budget == null) return;
+    final navigator = Navigator.of(context);
+    final key = await widget.services.keys.keyFor(budget.id);
+    if (!mounted) return;
+    await navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => RecoveryPhraseScreen(
+          services: widget.services,
+          budgetKey: key,
+          requiresConfirmation: requiresConfirmation,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPair() => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) =>
+          PairDeviceScreen(engine: widget.engine, services: widget.services),
+    ),
+  );
+
+  /// Rotating makes a new key, seals a fresh snapshot with it, deletes every
+  /// file the old key sealed, and leaves the other device unpaired until it
+  /// scans the new code (ticket 12).
+  Future<void> _rotate() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rotate the key?'),
+        content: const Text(
+          'This makes a new Budget Key, re-seals the budget in Drive with it, '
+          'and deletes every file the old key sealed. Your other device '
+          'stops syncing until you pair it again with the new code.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Rotate'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _busy = true;
+      _message = [];
+      _errors = [];
+    });
+    final outcome = await rotateKey(
+      engine: widget.engine,
+      services: widget.services,
+      book: _book,
+    );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _book = outcome.book;
+      _attention = const [];
+      _errors = [?outcome.error];
+      if (outcome.error == null) {
+        _message = [
+          'A new Budget Key is in place, and ${outcome.deletedFiles} old '
+              'files are gone. Your other device must pair again.',
+        ];
+      }
+    });
+    if (outcome.error == null) await _showPhrase(requiresConfirmation: false);
   }
 
   Future<void> _confirmOff() async {

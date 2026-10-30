@@ -16,7 +16,9 @@ import 'export_screen.dart';
 import 'forecast_screen.dart';
 import 'import_compare_screen.dart';
 import 'import_screen.dart';
+import 'join_screen.dart';
 import 'mcp_screen.dart';
+import 'recovery_phrase_screen.dart';
 import 'schedules_screen.dart';
 
 /// Settings (canvas: Settings). It lists only what exists today. A later
@@ -68,6 +70,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _readSyncBook();
     await _readMcpMode();
     if (mounted) setState(() {});
+  }
+
+  /// Opens the phrase screen, which asks for the phone's check before it
+  /// spells the key out (ticket 12).
+  Future<void> _openPhrase() async {
+    final budget = widget.engine.state.budget;
+    if (budget == null) return;
+    final key = await widget.services.keys.keyFor(budget.id);
+    if (!mounted) return;
+    await _open(
+      RecoveryPhraseScreen(services: widget.services, budgetKey: key),
+    );
   }
 
   List<SettingsSection> _sections() => [
@@ -141,6 +155,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               services: widget.services,
             ),
           ),
+        ),
+        SettingsRow(
+          label: 'Recovery phrase',
+          value: '24 words',
+          onTap: _openPhrase,
+        ),
+        SettingsRow(
+          label: 'Join a device’s budget',
+          value: 'Pairing code',
+          onTap: () => _open(JoinScreen(services: widget.services)),
         ),
         if (widget.services.mcp != null)
           SettingsRow(

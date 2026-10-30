@@ -394,4 +394,180 @@ void main() {
       expect(outcome.pulled, 0);
     });
   });
+
+  group('Pairing', () {
+    test('the QR code reads the whole budget and writes nothing', () async {
+      // The phone has an Event of its own by the time the new device pairs.
+      b.clock.ms = 2000;
+      b.engine.execute(
+        EditTransaction(
+          transactionId: _byPayee(b, 'Hardware').id,
+          memo: 'Bolts',
+        ),
+      );
+      await sync(b);
+
+      final code = PairingPayload(budgetId: budgetId, key: key).code;
+      final scanned = PairingPayload.parse(code);
+      final uploads = drive.uploads.length;
+
+      final joined = await client.join(
+        budgetId: scanned.budgetId,
+        key: scanned.key,
+      );
+
+      expect(joined.error, isNull);
+      expect(joined.devices, 2);
+      expect(joined.events.map((event) => event.id).toSet(), {
+        for (final event in [...a.engine.events, ...b.engine.events]) event.id,
+      });
+      expect(
+        joined.events.first.hlc.compareTo(joined.events.last.hlc),
+        lessThanOrEqualTo(0),
+      );
+      expect(drive.uploads, hasLength(uploads));
+
+      // The Events are a whole budget a new device can open on its own.
+      final fresh = BudgetEngine(
+        log: InMemoryEventLog()..append(joined.events),
+        deviceId: 'device-c',
+        actor: Actor.userAndroid,
+      );
+      expect(fresh.state.budget!.id, budgetId);
+      expect(fresh.state.budget!.name, 'Home');
+      expect(
+        fresh.state.transactions.firstWhere((t) => t.payee == 'Hardware').memo,
+        'Bolts',
+      );
+    });
+
+    test('a code that opens nothing is reported, not trusted', () async {
+      final wrongKey = await client.join(
+        budgetId: budgetId,
+        key: BudgetKey.generate(),
+      );
+      expect(wrongKey.error, 'Wrong Budget Key, or the file was changed');
+      expect(wrongKey.events, isEmpty);
+
+      final noBudget = await client.join(budgetId: 'no-such-budget', key: key);
+      expect(noBudget.error, 'No synced budget uses that code.');
+    });
+  });
+
+  group('Key rotation', () {
+    test('re-seals a fresh snapshot, deletes the old files and unpairs', () async {
+      b.clock.ms = 2000;
+      b.engine.execute(
+        EditTransaction(
+          transactionId: _byPayee(b, 'Corner Bistro').id,
+          memo: 'Lunch',
+        ),
+      );
+      await sync(b);
+      await sync(a);
+      final before = a.engine.events.length;
+
+      final newKey = BudgetKey.generate();
+      final rotation = await client.rotate(
+        engine: a.engine,
+        oldKey: key,
+        newKey: newKey,
+        book: a.book,
+      );
+
+      expect(rotation.error, isNull);
+      expect(rotation.snapshotEvents, before);
+      expect(rotation.deletedFiles, greaterThan(0));
+      expect(rotation.book.uploadedEvents, greaterThan(0));
+      expect(rotation.book.uploadedSeq, 0);
+
+      // Every file the old key sealed is gone, the phone's folder included.
+      expect(drive.filesAt([budgetId, 'device-b']), isEmpty);
+      final names = drive.filesAt([budgetId, 'device-a']);
+      expect(names.where((name) => name.startsWith('seg-')), isEmpty);
+      final snapshotName = names.singleWhere(
+        (name) => name.startsWith('snap-'),
+      );
+
+      // The fresh snapshot is the whole budget, and only the new key opens it.
+      final bytes = drive.readBytes(
+        path: [budgetId, 'device-a'],
+        name: snapshotName,
+      )!;
+      final body = await SealedFile.open(
+        name: '$budgetId/device-a/$snapshotName',
+        file: bytes,
+        key: newKey,
+      );
+      expect(
+        readEvents(body).map((event) => event.id).toSet(),
+        a.engine.events.map((event) => event.id).toSet(),
+      );
+      await expectLater(
+        SealedFile.open(
+          name: '$budgetId/device-a/$snapshotName',
+          file: bytes,
+          key: key,
+        ),
+        throwsA(isA<SyncException>()),
+      );
+
+      // The phone still holds the old key, so it is refused.
+      final refused = await client.sync(
+        engine: b.engine,
+        key: key,
+        book: b.book,
+      );
+      expect(refused.error, 'Wrong Budget Key, or the file was changed');
+      expect(refused.pulled, 0);
+
+      // Pairing again with the new code catches it up, under the new key.
+      final joined = await client.join(budgetId: budgetId, key: newKey);
+      expect(joined.error, isNull);
+      b.engine.merge(joined.events);
+      b.book = SyncBook(enabled: true);
+      final phone = await client.sync(
+        engine: b.engine,
+        key: newKey,
+        book: b.book,
+      );
+      expect(phone.error, isNull);
+      b.book = phone.book;
+      final mac = await client.sync(
+        engine: a.engine,
+        key: newKey,
+        book: rotation.book,
+      );
+      expect(mac.error, isNull);
+      expect(b.engine.events.length, a.engine.events.length);
+      expect(
+        stateJson(b.engine.state, month: _november),
+        stateJson(a.engine.state, month: _november),
+      );
+    });
+
+    test('a rotation with the wrong old key deletes nothing', () async {
+      final before = [
+        ...drive.filesAt([budgetId, 'device-a']),
+        ...drive.filesAt([budgetId, 'device-b']),
+      ]..sort();
+
+      final outcome = await client.rotate(
+        engine: a.engine,
+        oldKey: BudgetKey.generate(),
+        newKey: BudgetKey.generate(),
+        book: a.book,
+      );
+
+      expect(outcome.error, 'That isn’t this budget’s current Budget Key.');
+      expect(outcome.deletedFiles, 0);
+      expect(
+        [
+          ...drive.filesAt([budgetId, 'device-a']),
+          ...drive.filesAt([budgetId, 'device-b']),
+        ]..sort(),
+        before,
+      );
+    });
+  });
 }

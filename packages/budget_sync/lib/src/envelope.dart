@@ -4,7 +4,8 @@ import 'dart:typed_data';
 import 'package:budget_core/budget_core.dart';
 import 'package:cryptography/cryptography.dart';
 
-/// A sync file that can't be opened: wrong Budget Key, damaged, or renamed.
+/// A sync file that can't be used: a file, pairing code or recovery phrase
+/// that is wrong, damaged, renamed or sealed with another Budget Key.
 final class SyncException implements Exception {
   const SyncException(this.message);
 

@@ -11,6 +11,9 @@ import 'package:flutter/widgets.dart';
 abstract interface class BudgetKeyStore {
   /// The key for [budgetId], created on first use.
   Future<BudgetKey> keyFor(String budgetId);
+
+  /// Replaces the key for [budgetId], as rotating it does (ticket 12).
+  Future<void> writeKey(String budgetId, BudgetKey key);
 }
 
 /// Settings that belong to this device, not to the budget, so they are not
@@ -186,6 +189,10 @@ final class InMemoryBudgetKeyStore implements BudgetKeyStore {
   @override
   Future<BudgetKey> keyFor(String budgetId) async =>
       _keys.putIfAbsent(budgetId, BudgetKey.generate);
+
+  @override
+  Future<void> writeKey(String budgetId, BudgetKey key) async =>
+      _keys[budgetId] = key;
 }
 
 final class InMemoryDevicePrefs implements DevicePrefs {

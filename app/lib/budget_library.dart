@@ -144,6 +144,29 @@ final class BudgetLibrary {
     await prefs.writeLastBudgetId(id);
     return engine;
   }
+
+  /// Adds the budget [id] and the [events] another device showed it holds, as
+  /// pairing with a QR code does (ticket 12). A budget already on this device
+  /// is merged into, not replaced, so re-pairing after a key rotation keeps
+  /// what this device wrote.
+  Future<BudgetEngine> join({
+    required String id,
+    required List<Event> events,
+  }) async {
+    final engine =
+        _engines[id] ??
+        BudgetEngine(
+          log: await storage.openLog(id),
+          deviceId: deviceId,
+          actor: actor,
+        );
+    engine.merge(events);
+    _engines[id] = engine;
+    _current = engine;
+    await prefs.writeBudgetIds(_engines.keys.toList());
+    await prefs.writeLastBudgetId(id);
+    return engine;
+  }
 }
 
 /// Gives every screen below it the device's [BudgetLibrary].
