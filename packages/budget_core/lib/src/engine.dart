@@ -59,6 +59,31 @@ final class BudgetEngine {
   /// Every Event in the log, in HLC order.
   List<Event> get events => List.unmodifiable(_events);
 
+  /// Appends Events another device wrote, as sync does, skipping any this
+  /// device already has, and returns the ones it added.
+  ///
+  /// A union replayed in HLC order is the whole merge rule (ticket 06):
+  /// [BudgetState.replay] already makes each field last writer wins, adds
+  /// Assignments as deltas, lets a delete beat a concurrent edit and takes
+  /// a split's lines as one whole set. This device's clock moves past
+  /// everything the log now holds, so its next Event sorts after the merge.
+  List<Event> merge(Iterable<Event> events) {
+    final known = {for (final event in _events) event.id};
+    final added = [
+      for (final event in events)
+        if (known.add(event.id)) event,
+    ]..sort((a, b) => a.hlc.compareTo(b.hlc));
+    if (added.isEmpty) return const [];
+    _log.append(added);
+    _events
+      ..addAll(added)
+      ..sort((a, b) => a.hlc.compareTo(b.hlc));
+    _state = BudgetState.replay(_events);
+    _history = null;
+    _clock.last = _events.last.hlc;
+    return added;
+  }
+
   /// Change History as of the latest Event (ticket 11).
   ChangeHistory get history => _history ??= ChangeHistory.of(_events);
   ChangeHistory? _history;

@@ -468,7 +468,8 @@ class _EntryCard extends StatelessWidget {
   }
 }
 
-/// `Memo  empty → “Client lunch”`, the before struck through.
+/// `Memo  empty → “Client lunch”`, the before struck through. A value that
+/// lost to another device's is noted `overwritten by sync` (ticket 06).
 class _ChangeLine extends StatelessWidget {
   const _ChangeLine(this.change);
 
@@ -493,6 +494,15 @@ class _ChangeLine extends StatelessWidget {
             const TextSpan(text: ' → '),
           ],
           TextSpan(text: change.after ?? ''),
+          if (change.note case final note?)
+            TextSpan(
+              text: '  $note',
+              style: const TextStyle(
+                fontSize: 11,
+                color: Palette.muted,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
         ],
       ),
     );

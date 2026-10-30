@@ -8,6 +8,7 @@ workspace:
   - packages/budget_core
   - packages/budget_simplefin
   - packages/budget_store
+  - packages/budget_sync
   - app
 
 hooks:

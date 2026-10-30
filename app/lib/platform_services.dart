@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:budget_core/budget_core.dart';
 import 'package:budget_simplefin/budget_simplefin.dart';
+import 'package:budget_sync/budget_sync.dart';
 import 'package:budget_store/budget_store.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -98,6 +99,31 @@ final class SecureDevicePrefs implements DevicePrefs {
   @override
   Future<void> writeSimpleFinBook(SimpleFinBook book) =>
       _storage.write(key: _simpleFin, value: jsonEncode(book.toJson()));
+
+  @override
+  Future<SyncBook> readSyncBook(String budgetId) async {
+    final json = await _storage.read(key: 'sync-book:$budgetId');
+    if (json == null) return SyncBook.off;
+    return SyncBook.fromJson((jsonDecode(json) as Map).cast<String, Object?>());
+  }
+
+  @override
+  Future<void> writeSyncBook(String budgetId, SyncBook book) => _storage.write(
+    key: 'sync-book:$budgetId',
+    value: jsonEncode(book.toJson()),
+  );
+}
+
+/// The Google Drive access token, as Google Sign-In leaves it in secure
+/// storage. Null until this device connects Drive: getting the token needs
+/// the project's OAuth client id, which a later ticket adds the screen for.
+final class SecureDriveAccess implements DriveAccess {
+  const SecureDriveAccess(this._storage);
+
+  final FlutterSecureStorage _storage;
+
+  @override
+  Future<String?> accessToken() => _storage.read(key: 'drive-access-token');
 }
 
 final class SystemFileSaver implements FileSaver {

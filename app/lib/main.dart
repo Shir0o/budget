@@ -1,5 +1,6 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:budget_simplefin/budget_simplefin.dart';
+import 'package:budget_sync/budget_sync.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -36,6 +37,12 @@ Future<void> main() async {
     saver: const SystemFileSaver(),
     authenticator: LocalAuthenticator(),
     simpleFin: const HttpSimpleFinTransport(),
+    // Google Drive's hidden app data folder only (ADR 0002). The token comes
+    // from Google Sign-In, which needs the OAuth client id.
+    drive: GoogleDriveAppData(
+      transport: const HttpDriveTransport(),
+      access: const SecureDriveAccess(secrets),
+    ),
     appLockEnabled: await prefs.readAppLockEnabled(),
   );
   runApp(BudgetApp(library: library, services: services));
