@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:uuid/uuid.dart';
 
 import 'actor.dart';
@@ -8,6 +10,7 @@ import 'event.dart';
 import 'event_log.dart';
 import 'hlc.dart';
 import 'money.dart';
+import 'sensitive_numbers.dart';
 
 const _uuid = Uuid();
 
@@ -64,6 +67,8 @@ final class _Stamp {
   final String budgetId;
   final String groupId = newId();
 
+  Actor get actor => _engine.actor;
+
   Event event(String type, Map<String, Object?> payload) => Event(
     id: newId(),
     budgetId: budgetId,
@@ -105,6 +110,8 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
           amount: startingBalance,
           date: command.asOf,
           payee: 'Starting Balance',
+          // It is the bank's balance on that date.
+          cleared: ClearedStatus.cleared,
         ),
       ]);
 
@@ -115,6 +122,7 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
       if (!amount.isPositive) {
         return const Rejected(Rejection.incomeMustBePositive);
       }
+      if (_checkText([command.payee]) case final rejected?) return rejected;
       return Accepted([
         _income(
           stamp,
@@ -123,6 +131,42 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
           date: command.date,
           payee: command.payee.trim(),
         ),
+      ]);
+
+    case CreateTransaction(:final accountId, :final amount, :final lines):
+      if (state.account(accountId) == null) {
+        return const Rejected(Rejection.unknownAccount);
+      }
+      if (_checkText([command.payee, command.memo]) case final rejected?) {
+        return rejected;
+      }
+      if (_checkLines(state, amount, lines) case final rejected?) {
+        return rejected;
+      }
+      return Accepted([
+        stamp.event(EventType.transactionCreated, {
+          'transactionId': newId(),
+          'accountId': accountId,
+          'date': command.date.toIso(),
+          'payee': command.payee.trim(),
+          'memo': command.memo.trim(),
+          'cleared': ClearedStatus.uncleared.name,
+          'amountCents': amount.cents,
+          'lines': [for (final line in lines) _lineJson(line, stamp.actor)],
+        }),
+      ]);
+
+    case EditTransaction():
+      return _editTransaction(command, state, stamp);
+
+    case DeleteTransaction(:final transactionId):
+      if (state.transaction(transactionId) == null) {
+        return const Rejected(Rejection.unknownTransaction);
+      }
+      return Accepted([
+        stamp.event(EventType.transactionDeleted, {
+          'transactionId': transactionId,
+        }),
       ]);
 
     case CreateCategoryGroup(:final name):
@@ -220,17 +264,143 @@ Event _income(
   required Money amount,
   required CivilDate date,
   required String payee,
+  ClearedStatus cleared = ClearedStatus.uncleared,
 }) => stamp.event(EventType.transactionCreated, {
   'transactionId': newId(),
   'accountId': accountId,
   'date': date.toIso(),
   'payee': payee,
+  'memo': '',
+  'cleared': cleared.name,
   'amountCents': amount.cents,
   'lines': [
-    {
-      'lineId': newId(),
-      'amountCents': amount.cents,
-      'category': readyToAssignCategory,
-    },
+    _lineJson(
+      LineInput(amount: amount, category: readyToAssignCategory),
+      stamp.actor,
+    ),
   ],
 });
+
+const _accountNumber = Rejected(Rejection.accountNumberNotAllowed);
+
+/// Rejects payees and memos that look like a card or account number
+/// (ticket 09).
+Rejected? _checkText(Iterable<String?> texts) =>
+    texts.any((t) => t != null && containsSensitiveNumber(t))
+    ? _accountNumber
+    : null;
+
+/// Checks a transaction's [lines] against its [amount]. A line may keep a
+/// Category in [kept] even if it has since been archived.
+Rejected? _checkLines(
+  BudgetState state,
+  Money amount,
+  List<LineInput> lines, {
+  Set<String?> kept = const {},
+}) {
+  if (amount == Money.zero) return const Rejected(Rejection.zeroAmount);
+  if (lines.isEmpty) return const Rejected(Rejection.noLines);
+  final sum = lines.fold(Money.zero, (total, line) => total + line.amount);
+  if (sum != amount) return const Rejected(Rejection.splitDoesNotSum);
+  for (final line in lines) {
+    final category = line.category;
+    if (category != null &&
+        category != readyToAssignCategory &&
+        !kept.contains(category)) {
+      if (_checkActive(state, category) case final rejected?) return rejected;
+    }
+    if (line.business case Business(:final tag) when tag.trim().isEmpty) {
+      return const Rejected(Rejection.businessTagRequired);
+    }
+  }
+  return _checkText(lines.map((line) => line.memo));
+}
+
+/// A stored line. It is Reviewed when a person set both its category and
+/// its business status (ticket 09, ADR 0003).
+Map<String, Object?> _lineJson(LineInput line, Actor actor) {
+  final business = switch (line.business) {
+    Business(:final tag) => Business(tag.trim()),
+    final other => other,
+  };
+  return {
+    'lineId': line.id ?? newId(),
+    'amountCents': line.amount.cents,
+    'category': line.category,
+    ...?business?.toJson(),
+    'memo': line.memo.trim(),
+    'reviewed': actor.isPerson && line.category != null && business != null,
+  };
+}
+
+/// [line] as an edit would resubmit it.
+LineInput _asInput(TransactionLine line) => LineInput(
+  id: line.id,
+  amount: line.amount,
+  category: line.category,
+  business: line.business,
+  memo: line.memo,
+);
+
+/// The stored form of a projected line, to tell whether an edit changed it.
+Map<String, Object?> _storedLine(TransactionLine line) => {
+  'lineId': line.id,
+  'amountCents': line.amount.cents,
+  'category': line.category,
+  ...?line.business?.toJson(),
+  'memo': line.memo,
+  'reviewed': line.reviewed,
+};
+
+CommandResult _editTransaction(
+  EditTransaction command,
+  BudgetState state,
+  _Stamp stamp,
+) {
+  final transaction = state.transaction(command.transactionId);
+  if (transaction == null) {
+    return const Rejected(Rejection.unknownTransaction);
+  }
+  if (_checkText([command.payee, command.memo]) case final rejected?) {
+    return rejected;
+  }
+  final fields = <String, Object?>{
+    if (command.payee?.trim() case final payee? when payee != transaction.payee)
+      'payee': payee,
+    if (command.date case final date? when date != transaction.date)
+      'date': date.toIso(),
+    if (command.memo?.trim() case final memo? when memo != transaction.memo)
+      'memo': memo,
+    if (command.cleared case final cleared? when cleared != transaction.cleared)
+      'cleared': cleared.name,
+  };
+  final events = [
+    if (fields.isNotEmpty)
+      stamp.event(EventType.transactionFieldsSet, {
+        'transactionId': transaction.id,
+        'fields': fields,
+      }),
+  ];
+  if (command.amount != null || command.lines != null) {
+    final amount = command.amount ?? transaction.amount;
+    final lines = command.lines ?? transaction.lines.map(_asInput).toList();
+    final kept = {for (final line in transaction.lines) line.category};
+    if (_checkLines(state, amount, lines, kept: kept) case final rejected?) {
+      return rejected;
+    }
+    final stored = [for (final line in lines) _lineJson(line, stamp.actor)];
+    if (amount != transaction.amount ||
+        jsonEncode(stored) !=
+            jsonEncode(transaction.lines.map(_storedLine).toList())) {
+      events.add(
+        stamp.event(EventType.transactionSplitSet, {
+          'transactionId': transaction.id,
+          'amountCents': amount.cents,
+          'lines': stored,
+        }),
+      );
+    }
+  }
+  if (events.isEmpty) return const Rejected(Rejection.noChange);
+  return Accepted(events);
+}

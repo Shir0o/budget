@@ -49,6 +49,85 @@ final class RecordIncome extends Command {
   final String payee;
 }
 
+/// One line of a transaction as entered.
+final class LineInput {
+  const LineInput({
+    required this.amount,
+    this.category,
+    this.business,
+    this.memo = '',
+    this.id,
+  });
+
+  /// An existing line's id, kept when its transaction is edited. Null for a
+  /// new line.
+  final String? id;
+
+  /// Negative for an outflow.
+  final Money amount;
+
+  /// A Category id, [readyToAssignCategory] for income, or null to leave
+  /// the line uncategorized. Income can only go to Ready to Assign; an
+  /// inflow to a Category is a refund (ticket 07).
+  final String? category;
+
+  /// Null to leave it unset.
+  final BusinessStatus? business;
+  final String memo;
+}
+
+/// Enters a transaction by hand. Its [lines] must sum to [amount]. When a
+/// person enters it, each line with both a category and a business status
+/// is Reviewed (ticket 09).
+final class CreateTransaction extends Command {
+  const CreateTransaction({
+    required this.accountId,
+    required this.date,
+    required this.amount,
+    required this.lines,
+    this.payee = '',
+    this.memo = '',
+  });
+
+  final String accountId;
+  final CivilDate date;
+
+  /// Negative for an outflow.
+  final Money amount;
+  final List<LineInput> lines;
+  final String payee;
+  final String memo;
+}
+
+/// Changes a transaction. Null fields stay as they are. When [amount] or
+/// [lines] is given, the lines (new or current) must sum to the amount (new
+/// or current), and the whole line set is replaced.
+final class EditTransaction extends Command {
+  const EditTransaction({
+    required this.transactionId,
+    this.payee,
+    this.date,
+    this.memo,
+    this.cleared,
+    this.amount,
+    this.lines,
+  });
+
+  final String transactionId;
+  final String? payee;
+  final CivilDate? date;
+  final String? memo;
+  final ClearedStatus? cleared;
+  final Money? amount;
+  final List<LineInput>? lines;
+}
+
+final class DeleteTransaction extends Command {
+  const DeleteTransaction({required this.transactionId});
+
+  final String transactionId;
+}
+
 /// Adds a category group, such as Bills or Everyday.
 final class CreateCategoryGroup extends Command {
   const CreateCategoryGroup({required this.name});
@@ -116,7 +195,7 @@ enum Rejection {
   /// A blank budget or account name.
   nameRequired,
 
-  /// [RecordIncome] into an account that doesn't exist.
+  /// [RecordIncome] or a transaction in an account that doesn't exist.
   unknownAccount,
 
   /// [RecordIncome] of zero or less.
@@ -142,6 +221,25 @@ enum Rejection {
 
   /// [ArchiveCategory] while the Category's Available is not 0.00.
   categoryHasBalance,
+
+  /// A transaction id that doesn't exist or was deleted.
+  unknownTransaction,
+
+  /// A transaction of 0.00.
+  zeroAmount,
+
+  /// A transaction with no lines.
+  noLines,
+
+  /// Split lines that don't sum to the transaction's amount.
+  splitDoesNotSum,
+
+  /// [Business] with a blank tag.
+  businessTagRequired,
+
+  /// A payee or memo that looks like a card or account number
+  /// (`containsSensitiveNumber`). "Don't store account numbers here."
+  accountNumberNotAllowed,
 }
 
 /// What a command produced.

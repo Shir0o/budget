@@ -248,11 +248,17 @@ class FormHeader extends StatelessWidget {
     required this.title,
     required this.onClose,
     required this.onSave,
+    this.actions = const [],
   });
 
   final String title;
   final VoidCallback onClose;
-  final VoidCallback onSave;
+
+  /// Null disables Save.
+  final VoidCallback? onSave;
+
+  /// Shown before Save.
+  final List<Widget> actions;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -272,6 +278,7 @@ class FormHeader extends StatelessWidget {
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
         ),
+        ...actions,
         FilledButton(
           onPressed: onSave,
           style: FilledButton.styleFrom(
@@ -298,17 +305,97 @@ class DateField extends StatelessWidget {
   Widget build(BuildContext context) => InkWell(
     borderRadius: BorderRadius.circular(10),
     onTap: () async {
-      final picked = await showDatePicker(
-        context: context,
-        initialDate: DateTime(value.year, value.month, value.day),
-        firstDate: DateTime(2000),
-        lastDate: DateTime(2100),
-      );
-      if (picked != null) onChanged(CivilDate.fromDateTime(picked));
+      final picked = await pickDate(context, value);
+      if (picked != null) onChanged(picked);
     },
     child: InputDecorator(
       decoration: const InputDecoration(),
       child: Text(formatDate(value), style: const TextStyle(fontSize: 15)),
+    ),
+  );
+}
+
+/// Opens the date picker at [value]. Null when dismissed.
+Future<CivilDate?> pickDate(BuildContext context, CivilDate value) async {
+  final picked = await showDatePicker(
+    context: context,
+    initialDate: DateTime(value.year, value.month, value.day),
+    firstDate: DateTime(2000),
+    lastDate: DateTime(2100),
+  );
+  return picked == null ? null : CivilDate.fromDateTime(picked);
+}
+
+/// The canvas's warning for payees and memos (ticket 09).
+const accountNumberMessage = 'Don’t store account numbers here.';
+
+/// `+1,500.00` or `−12.50`, as in the register.
+String formatSigned(Money amount) =>
+    '${amount.isPositive ? '+' : ''}${amount.format()}';
+
+/// The canvas's segmented control. [selected] may be null when nothing is
+/// chosen yet.
+class Segmented<T> extends StatelessWidget {
+  const Segmented({
+    super.key,
+    required this.options,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<(T, String)> options;
+  final T? selected;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(3),
+    decoration: BoxDecoration(
+      color: Palette.zeroPill,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(
+      spacing: 3,
+      children: [
+        for (final (value, label) in options)
+          Expanded(
+            child: Semantics(
+              button: true,
+              selected: value == selected,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onChanged(value),
+                child: Container(
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: value == selected
+                      ? BoxDecoration(
+                          color: Palette.card,
+                          borderRadius: BorderRadius.circular(9),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x1F17191B),
+                              offset: Offset(0, 1),
+                              blurRadius: 2,
+                            ),
+                          ],
+                        )
+                      : null,
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: value == selected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                      color: value == selected ? Palette.ink : Palette.inkSoft,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     ),
   );
 }

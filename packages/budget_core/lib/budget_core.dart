@@ -13,3 +13,4 @@ export 'src/event_log.dart';
 export 'src/export.dart';
 export 'src/hlc.dart';
 export 'src/money.dart';
+export 'src/sensitive_numbers.dart';

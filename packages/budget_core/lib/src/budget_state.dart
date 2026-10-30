@@ -59,18 +59,100 @@ final class Category {
   final bool archived;
 }
 
+/// Whether a line is a personal or a business expense (ticket 09).
+sealed class BusinessStatus {
+  const BusinessStatus();
+
+  /// Restores a status from a line's stored `business` and `businessTag`.
+  static BusinessStatus? fromJson(Object? business, Object? tag) =>
+      switch (business) {
+        'personal' => const Personal(),
+        'business' => Business(tag as String),
+        _ => null,
+      };
+
+  /// The line's stored `business` and `businessTag`.
+  Map<String, Object?> toJson();
+}
+
+final class Personal extends BusinessStatus {
+  const Personal();
+
+  @override
+  Map<String, Object?> toJson() => {'business': 'personal'};
+
+  @override
+  bool operator ==(Object other) => other is Personal;
+
+  @override
+  int get hashCode => 0;
+}
+
+/// A reportable self-employment expense under a Business Tag.
+final class Business extends BusinessStatus {
+  const Business(this.tag);
+
+  final String tag;
+
+  @override
+  Map<String, Object?> toJson() => {'business': 'business', 'businessTag': tag};
+
+  @override
+  bool operator ==(Object other) => other is Business && other.tag == tag;
+
+  @override
+  int get hashCode => tag.hashCode;
+}
+
+/// The preset Business Tags (ticket 04). Custom tags arrive with ticket 11.
+const presetBusinessTags = [
+  'Self-employment income',
+  'Advertising',
+  'Car & truck',
+  'Contract labor',
+  'Insurance',
+  'Legal & professional',
+  'Office expense',
+  'Rent / lease',
+  'Supplies',
+  'Taxes & licenses',
+  'Travel',
+  'Meals',
+  'Utilities',
+  'Conferences & education',
+  'Software & subscriptions',
+  'Phone & internet',
+  'Gifts',
+  'Bank & payment fees',
+  'Other business expense',
+];
+
+/// A transaction's cleared status (ticket 09).
+enum ClearedStatus { uncleared, cleared, reconciled }
+
 final class TransactionLine {
   const TransactionLine({
     required this.id,
     required this.amount,
     required this.category,
+    this.business,
+    this.memo = '',
+    this.reviewed = false,
   });
 
   final String id;
   final Money amount;
 
-  /// [readyToAssignCategory] for income.
-  final String category;
+  /// A Category id, [readyToAssignCategory] for income, or null while
+  /// uncategorized.
+  final String? category;
+
+  /// Null until set.
+  final BusinessStatus? business;
+  final String memo;
+
+  /// Only a person marks a line Reviewed (ADR 0003).
+  final bool reviewed;
 }
 
 final class Transaction {
@@ -81,14 +163,41 @@ final class Transaction {
     required this.payee,
     required this.amount,
     required this.lines,
+    this.memo = '',
+    this.cleared = ClearedStatus.uncleared,
   });
 
   final String id;
   final String accountId;
   final CivilDate date;
   final String payee;
+  final String memo;
+  final ClearedStatus cleared;
+
+  /// Negative for an outflow. Always the sum of [lines].
   final Money amount;
   final List<TransactionLine> lines;
+
+  /// Whether it has more than one line.
+  bool get isSplit => lines.length > 1;
+
+  Transaction _copyWith({
+    CivilDate? date,
+    String? payee,
+    String? memo,
+    ClearedStatus? cleared,
+    Money? amount,
+    List<TransactionLine>? lines,
+  }) => Transaction(
+    id: id,
+    accountId: accountId,
+    date: date ?? this.date,
+    payee: payee ?? this.payee,
+    memo: memo ?? this.memo,
+    cleared: cleared ?? this.cleared,
+    amount: amount ?? this.amount,
+    lines: lines ?? this.lines,
+  );
 }
 
 /// A budget as of some point in its Event log. Every query is a pure
@@ -96,11 +205,26 @@ final class Transaction {
 final class BudgetState {
   /// Replays [events] in HLC order. Unknown event types are skipped, so an
   /// older app can still read a log written by a newer one.
+  ///
+  /// Replaying in order makes each transaction field, and each whole line
+  /// set, last writer wins, and a delete beats any edit (ticket 06).
   factory BudgetState.replay(Iterable<Event> events) {
     final state = BudgetState._();
     final ordered = events.toList()..sort((a, b) => a.hlc.compareTo(b.hlc));
     for (final event in ordered) {
       state._apply(event);
+    }
+    for (final transaction in state._transactions.values) {
+      for (final line in transaction.lines) {
+        final category = line.category;
+        if (category == null || category == readyToAssignCategory) continue;
+        state._add(
+          state._activity,
+          category,
+          CalendarMonth.of(transaction.date),
+          line.amount,
+        );
+      }
     }
     return state;
   }
@@ -109,7 +233,8 @@ final class BudgetState {
 
   Budget? _budget;
   final _accounts = <String, Account>{};
-  final _transactions = <Transaction>[];
+  final _transactions = <String, Transaction>{};
+  final _deleted = <String>{};
   final _groups = <String, CategoryGroup>{};
   final _categories = <String, Category>{};
 
@@ -125,7 +250,55 @@ final class BudgetState {
 
   Account? account(String id) => _accounts[id];
 
-  List<Transaction> get transactions => List.unmodifiable(_transactions);
+  /// Every transaction not deleted, in the order they were added.
+  List<Transaction> get transactions => List.unmodifiable(_transactions.values);
+
+  /// Null when it doesn't exist or was deleted.
+  Transaction? transaction(String id) => _transactions[id];
+
+  /// [accountId]'s transactions, newest date first. Same-day ones are
+  /// newest added first.
+  List<Transaction> register(String accountId) {
+    final list = [
+      for (final t in _transactions.values)
+        if (t.accountId == accountId) t,
+    ].reversed.toList();
+    // List.sort isn't stable, so break ties on the position added.
+    final position = {for (final (i, t) in list.indexed) t.id: i};
+    return list..sort((a, b) {
+      final byDate = b.date.compareTo(a.date);
+      return byDate != 0 ? byDate : position[a.id]! - position[b.id]!;
+    });
+  }
+
+  /// The sum of [accountId]'s transactions.
+  Money balance(String accountId) => _sum(accountId, (_) => true);
+
+  /// The sum of [accountId]'s cleared and reconciled transactions.
+  Money clearedBalance(String accountId) =>
+      _sum(accountId, (t) => t.cleared != ClearedStatus.uncleared);
+
+  Money _sum(String accountId, bool Function(Transaction) include) {
+    var total = Money.zero;
+    for (final t in _transactions.values) {
+      if (t.accountId == accountId && include(t)) total += t.amount;
+    }
+    return total;
+  }
+
+  /// Active Categories most recently used on a transaction line, newest
+  /// first, at most [limit].
+  List<String> recentCategories({int limit = 3}) {
+    final recent = <String>{};
+    for (final t in _transactions.values.toList().reversed) {
+      for (final line in t.lines) {
+        final category = _categories[line.category];
+        if (category != null && !category.archived) recent.add(category.id);
+        if (recent.length == limit) return recent.toList();
+      }
+    }
+    return recent.toList();
+  }
 
   /// In the order they were added.
   List<CategoryGroup> get categoryGroups => List.unmodifiable(_groups.values);
@@ -159,15 +332,18 @@ final class BudgetState {
       _availableByMonth(categoryId, month).lastOrNull?.$2 ?? Money.zero;
 
   /// The single, global pool as it stands during [month] (ticket 07):
-  /// income lines in budget accounts, less every Assignment in any month
-  /// (future ones too), less cash overspending from months before [month].
-  /// Uncategorized outflows join this sum with ticket 09. Negative means
+  /// income lines in budget accounts, less uncategorized outflows
+  /// (ticket 09), less every Assignment in any month (future ones too),
+  /// less cash overspending from months before [month]. Negative means
   /// over-assigned.
   Money readyToAssign(CalendarMonth month) {
     var total = Money.zero;
-    for (final transaction in _transactions) {
+    for (final transaction in _transactions.values) {
       for (final line in transaction.lines) {
-        if (line.category == readyToAssignCategory) total += line.amount;
+        if (line.category == readyToAssignCategory ||
+            (line.category == null && line.amount.isNegative)) {
+          total += line.amount;
+        }
       }
     }
     for (final byMonth in _assigned.values) {
@@ -241,31 +417,47 @@ final class BudgetState {
           type: AccountType.values.byName(p['accountType'] as String),
         );
       case EventType.transactionCreated:
-        final transaction = Transaction(
-          id: p['transactionId'] as String,
+        final id = p['transactionId'] as String;
+        if (_deleted.contains(id)) return;
+        _transactions[id] = Transaction(
+          id: id,
           accountId: p['accountId'] as String,
           date: CivilDate.parse(p['date'] as String),
           payee: p['payee'] as String,
+          memo: p['memo'] as String? ?? '',
+          cleared: ClearedStatus.values.byName(
+            p['cleared'] as String? ?? ClearedStatus.uncleared.name,
+          ),
           amount: Money(p['amountCents'] as int),
-          lines: [
-            for (final line in (p['lines'] as List).cast<Map>())
-              TransactionLine(
-                id: line['lineId'] as String,
-                amount: Money(line['amountCents'] as int),
-                category: line['category'] as String,
-              ),
-          ],
+          lines: _lines(p['lines'] as List),
         );
-        _transactions.add(transaction);
-        for (final line in transaction.lines) {
-          if (line.category == readyToAssignCategory) continue;
-          _add(
-            _activity,
-            line.category,
-            CalendarMonth.of(transaction.date),
-            line.amount,
-          );
-        }
+      case EventType.transactionFieldsSet:
+        final id = p['transactionId'] as String;
+        final transaction = _transactions[id];
+        if (transaction == null) return;
+        final fields = (p['fields'] as Map).cast<String, Object?>();
+        final date = fields['date'] as String?;
+        final cleared = fields['cleared'] as String?;
+        _transactions[id] = transaction._copyWith(
+          date: date == null ? null : CivilDate.parse(date),
+          payee: fields['payee'] as String?,
+          memo: fields['memo'] as String?,
+          cleared: cleared == null
+              ? null
+              : ClearedStatus.values.byName(cleared),
+        );
+      case EventType.transactionSplitSet:
+        final id = p['transactionId'] as String;
+        final transaction = _transactions[id];
+        if (transaction == null) return;
+        _transactions[id] = transaction._copyWith(
+          amount: Money(p['amountCents'] as int),
+          lines: _lines(p['lines'] as List),
+        );
+      case EventType.transactionDeleted:
+        final id = p['transactionId'] as String;
+        _deleted.add(id);
+        _transactions.remove(id);
       case EventType.categoryGroupCreated:
         final id = p['categoryGroupId'] as String;
         _groups[id] = CategoryGroup(id: id, name: p['name'] as String);
@@ -294,4 +486,19 @@ final class BudgetState {
         );
     }
   }
+
+  static List<TransactionLine> _lines(List<Object?> lines) => [
+    for (final line in lines.cast<Map>())
+      TransactionLine(
+        id: line['lineId'] as String,
+        amount: Money(line['amountCents'] as int),
+        category: line['category'] as String?,
+        business: BusinessStatus.fromJson(
+          line['business'],
+          line['businessTag'],
+        ),
+        memo: line['memo'] as String? ?? '',
+        reviewed: line['reviewed'] as bool? ?? false,
+      ),
+  ];
 }

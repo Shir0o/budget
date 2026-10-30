@@ -11,6 +11,10 @@ final class Actor {
 
   final String value;
 
+  /// A person on one of their devices (`user@…`), as opposed to bank sync,
+  /// automation, an import, an MCP client or a revert.
+  bool get isPerson => value.startsWith('user@');
+
   @override
   bool operator ==(Object other) => other is Actor && other.value == value;
 

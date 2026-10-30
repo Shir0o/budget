@@ -4,11 +4,12 @@ import 'package:flutter/material.dart';
 import '../services.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'account_register_screen.dart';
 import 'add_account_screen.dart';
 import 'add_category_screen.dart';
 import 'budget_switcher.dart';
 import 'category_screen.dart';
-import 'record_income_screen.dart';
+import 'new_transaction_screen.dart';
 import 'settings_screen.dart';
 
 /// The Budget month (canvas: Main): Ready to Assign, then each category
@@ -152,6 +153,27 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         'money a job.',
                       ),
                     ),
+                  // Until the Accounts screen arrives with ticket 05, the
+                  // registers open from here.
+                  if (state.accounts.isNotEmpty) ...[
+                    _GroupCard(
+                      name: 'Accounts',
+                      children: [
+                        for (final account in state.accounts)
+                          _AccountRow(
+                            name: account.name,
+                            balance: state.balance(account.id),
+                            onTap: () => _open(
+                              AccountRegisterScreen(
+                                engine: engine,
+                                accountId: account.id,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   const SizedBox(height: 6),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -159,13 +181,13 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     children: [
                       OutlinedButton(
                         onPressed: () =>
-                            _open(AddCategoryScreen(engine: engine)),
-                        child: const Text('Add category'),
+                            _open(NewTransactionScreen(engine: engine)),
+                        child: const Text('New transaction'),
                       ),
                       OutlinedButton(
                         onPressed: () =>
-                            _open(RecordIncomeScreen(engine: engine)),
-                        child: const Text('Record income'),
+                            _open(AddCategoryScreen(engine: engine)),
+                        child: const Text('Add category'),
                       ),
                       OutlinedButton(
                         onPressed: () =>
@@ -407,4 +429,35 @@ class _CategoryRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AccountRow extends StatelessWidget {
+  const _AccountRow({
+    required this.name,
+    required this.balance,
+    required this.onTap,
+  });
+
+  final String name;
+  final Money balance;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Container(
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Palette.divider)),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: Text(name, style: const TextStyle(fontSize: 15))),
+          Text(balance.format(), style: amountStyle(fontSize: 13)),
+          const Icon(Icons.chevron_right, size: 18, color: Palette.muted),
+        ],
+      ),
+    ),
+  );
 }
