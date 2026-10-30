@@ -9,6 +9,8 @@ final class Actor {
 
   static const userAndroid = Actor.fromValue('user@android');
 
+  static const userMac = Actor.fromValue('user@mac');
+
   /// Compensating Events written by a revert (ticket 11).
   static const revert = Actor.fromValue('revert');
 

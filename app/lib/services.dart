@@ -12,6 +12,10 @@ abstract interface class BudgetKeyStore {
   /// The key for [budgetId], created on first use.
   Future<BudgetKey> keyFor(String budgetId);
 
+  /// The key for [budgetId] if one exists; never creates one. Viewing the
+  /// recovery phrase must not mint a key that sync would later disagree with.
+  Future<BudgetKey?> existingKey(String budgetId);
+
   /// Replaces the key for [budgetId], as rotating it does (ticket 12).
   Future<void> writeKey(String budgetId, BudgetKey key);
 }
@@ -189,6 +193,9 @@ final class InMemoryBudgetKeyStore implements BudgetKeyStore {
   @override
   Future<BudgetKey> keyFor(String budgetId) async =>
       _keys.putIfAbsent(budgetId, BudgetKey.generate);
+
+  @override
+  Future<BudgetKey?> existingKey(String budgetId) async => _keys[budgetId];
 
   @override
   Future<void> writeKey(String budgetId, BudgetKey key) async =>

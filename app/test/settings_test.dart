@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:budget/app.dart';
+import 'package:budget/platform_services.dart';
 import 'package:budget/services.dart';
 import 'package:budget/widgets.dart';
 import 'package:budget_core/budget_core.dart';
@@ -169,6 +170,28 @@ void main() {
 
       expect(find.text('No backup yet'), findsOneWidget);
       expect(await services.prefs.readLastBackup(), isNull);
+    });
+  });
+
+  group('Recovery phrase', () {
+    testWidgets('viewing it with no key does not create one', (tester) async {
+      final (engine, _) = _home();
+      final services = AppServices.inMemory();
+      await tester.pumpWidget(BudgetApp(engine: engine, services: services));
+      await _openSettings(tester);
+
+      await tester.tap(find.text('Recovery phrase'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('No recovery phrase yet'), findsOneWidget);
+      expect(await services.keys.existingKey(engine.state.budget!.id), isNull);
+    });
+  });
+
+  group('User actor', () {
+    test('Mac edits are not recorded as Android', () {
+      expect(userActorFor('macos'), Actor.userMac);
+      expect(userActorFor('android'), Actor.userAndroid);
     });
   });
 

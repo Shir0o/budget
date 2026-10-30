@@ -40,7 +40,7 @@ Future<void> main() async {
     storage: SqlCipherBudgetStorage(secrets, directory: dir.path),
     prefs: prefs,
     deviceId: deviceId,
-    actor: Actor.userAndroid,
+    actor: userActorFor(Platform.operatingSystem),
   );
   final services = AppServices(
     keys: const SecureBudgetKeyStore(secrets),
