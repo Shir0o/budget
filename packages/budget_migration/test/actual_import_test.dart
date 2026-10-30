@@ -354,8 +354,9 @@ void main() {
       expect(report.transactions, 15);
       expect(report.incomeCategories, 1);
       expect(report.balancesMatch, isTrue);
-      // The current year: two lines plus both sides of three transfers.
-      expect(report.unreviewedLines, 8);
+      // The current year's two non-transfer lines on budget accounts: what
+      // Review lists (asserted against reviewQueue below).
+      expect(report.unreviewedLines, 2);
       expect(report.lastTransactionDate, CivilDate(2026, 10, 1));
       for (final expected in [
         '3 rules',
@@ -415,7 +416,8 @@ void main() {
       'projects income, Assignments, Schedules, Targets and the card payment',
       () {
         final (engine, _) = _engine();
-        commitImport(engine, _plan());
+        final plan = _plan();
+        commitImport(engine, plan);
         final state = engine.state;
 
         expect(state.category('actual-category-cat-income'), isNull);
@@ -458,6 +460,7 @@ void main() {
         expect(cardPayment?.name, 'Travel Card Payment');
 
         expect(state.reviewQueue, hasLength(2));
+        expect(plan.report.unreviewedLines, state.reviewQueue.length);
       },
     );
 
