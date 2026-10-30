@@ -5,12 +5,15 @@ import '../services.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'add_account_screen.dart';
+import 'add_category_screen.dart';
 import 'budget_switcher.dart';
+import 'category_screen.dart';
 import 'record_income_screen.dart';
 import 'settings_screen.dart';
 
-/// The Budget screen (canvas: Main), showing Ready to Assign. Categories,
-/// Assign, Review and the bottom navigation arrive with later tickets.
+/// The Budget month (canvas: Main): Ready to Assign, then each category
+/// group's Categories with their Assigned and Available for the month.
+/// Assign, Review and card debt arrive with later tickets.
 class BudgetScreen extends StatefulWidget {
   const BudgetScreen({super.key, required this.engine});
 
@@ -21,6 +24,8 @@ class BudgetScreen extends StatefulWidget {
 }
 
 class _BudgetScreenState extends State<BudgetScreen> {
+  var _month = thisMonth();
+
   Future<void> _open(Widget screen) async {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
@@ -29,9 +34,23 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = widget.engine.state;
+    final engine = widget.engine;
+    final state = engine.state;
+    final groups = [
+      for (final group in state.categoryGroups)
+        (
+          group,
+          [
+            for (final category in state.categories)
+              if (category.groupId == group.id && !category.archived) category,
+          ],
+        ),
+    ].where((entry) => entry.$2.isNotEmpty).toList();
+
     return Scaffold(
+      bottomNavigationBar: const MainNav(),
       body: SafeArea(
+        bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -41,92 +60,119 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: 14,
                 children: [
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 44),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Semantics(
-                          button: true,
-                          label: 'Switch budget',
-                          child: InkWell(
-                            onTap: () => showBudgetSwitcher(context),
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(minHeight: 44),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                spacing: 6,
-                                children: [
-                                  Text(
-                                    state.budget?.name ?? '',
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Semantics(
+                        button: true,
+                        label: 'Switch budget',
+                        child: InkWell(
+                          onTap: () => showBudgetSwitcher(context),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 44),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              spacing: 6,
+                              children: [
+                                Text(
+                                  state.budget?.name ?? '',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                  const Icon(
-                                    Icons.keyboard_arrow_down,
-                                    size: 16,
-                                  ),
-                                ],
-                              ),
+                                ),
+                                const Icon(Icons.keyboard_arrow_down, size: 16),
+                              ],
                             ),
                           ),
                         ),
-                        Row(
-                          children: [
-                            Text(
-                              formatMonth(today()),
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
+                      ),
+                      Row(
+                        children: [
+                          _MonthSwitcher(
+                            month: _month,
+                            onChanged: (month) =>
+                                setState(() => _month = month),
+                          ),
+                          IconButton(
+                            onPressed: () => _open(
+                              SettingsScreen(
+                                engine: widget.engine,
+                                services: AppServicesScope.of(context),
                               ),
                             ),
-                            IconButton(
-                              onPressed: () => _open(
-                                SettingsScreen(
-                                  engine: widget.engine,
-                                  services: AppServicesScope.of(context),
-                                ),
-                              ),
-                              tooltip: 'Settings',
-                              icon: const Icon(Icons.settings_outlined),
-                              color: Palette.ink,
-                              iconSize: 22,
-                              constraints: const BoxConstraints.tightFor(
-                                width: 44,
-                                height: 44,
-                              ),
+                            tooltip: 'Settings',
+                            icon: const Icon(Icons.settings_outlined),
+                            color: Palette.ink,
+                            iconSize: 22,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 44,
+                              height: 44,
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  _ReadyToAssignCard(amount: state.readyToAssign),
+                  _ReadyToAssignCard(amount: state.readyToAssign(thisMonth())),
                 ],
               ),
             ),
-            const Spacer(),
-            Container(
-              decoration: const BoxDecoration(
-                color: Palette.card,
-                border: Border(top: BorderSide(color: Palette.cardBorder)),
-              ),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                spacing: 8,
+            const _ColumnLabels(),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
                 children: [
-                  FilledButton(
-                    onPressed: () =>
-                        _open(RecordIncomeScreen(engine: widget.engine)),
-                    child: const Text('Record income'),
-                  ),
-                  OutlinedButton(
-                    onPressed: () =>
-                        _open(AddAccountScreen(engine: widget.engine)),
-                    child: const Text('Add account'),
+                  for (final (group, categories) in groups) ...[
+                    _GroupCard(
+                      name: group.name,
+                      children: [
+                        for (final category in categories)
+                          _CategoryRow(
+                            state: state,
+                            category: category,
+                            month: _month,
+                            onTap: () => _open(
+                              CategoryScreen(
+                                engine: engine,
+                                categoryId: category.id,
+                                month: _month,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  if (groups.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(8, 8, 8, 16),
+                      child: Hint(
+                        'No Categories yet. Add one to start giving your '
+                        'money a job.',
+                      ),
+                    ),
+                  const SizedBox(height: 6),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    spacing: 8,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () =>
+                            _open(AddCategoryScreen(engine: engine)),
+                        child: const Text('Add category'),
+                      ),
+                      OutlinedButton(
+                        onPressed: () =>
+                            _open(RecordIncomeScreen(engine: engine)),
+                        child: const Text('Record income'),
+                      ),
+                      OutlinedButton(
+                        onPressed: () =>
+                            _open(AddAccountScreen(engine: engine)),
+                        child: const Text('Add account'),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -134,6 +180,44 @@ class _BudgetScreenState extends State<BudgetScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MonthSwitcher extends StatelessWidget {
+  const _MonthSwitcher({required this.month, required this.onChanged});
+
+  final CalendarMonth month;
+  final ValueChanged<CalendarMonth> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = BoxConstraints.tightFor(width: 44, height: 44);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 2,
+      children: [
+        IconButton(
+          onPressed: () => onChanged(month.previous),
+          tooltip: 'Previous month',
+          constraints: size,
+          icon: const Icon(Icons.chevron_left, color: Palette.muted),
+        ),
+        SizedBox(
+          width: 96,
+          child: Text(
+            formatMonth(month),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+        ),
+        IconButton(
+          onPressed: () => onChanged(month.next),
+          tooltip: 'Next month',
+          constraints: size,
+          icon: const Icon(Icons.chevron_right, color: Palette.muted),
+        ),
+      ],
     );
   }
 }
@@ -167,10 +251,160 @@ class _ReadyToAssignCard extends StatelessWidget {
           style: amountStyle(
             fontSize: 34,
             fontWeight: FontWeight.w600,
-            color: Palette.background,
+            color: amount.isNegative
+                ? Palette.problemOnDark
+                : Palette.background,
           ).copyWith(letterSpacing: -0.68),
         ),
+        if (amount.isNegative)
+          const Text(
+            'Over-assigned',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Palette.problemOnDark,
+            ),
+          ),
       ],
     ),
   );
+}
+
+const _assignedWidth = 84.0;
+const _availableWidth = 96.0;
+
+class _ColumnLabels extends StatelessWidget {
+  const _ColumnLabels();
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(
+      fontSize: 11,
+      letterSpacing: 0.88,
+      color: Palette.muted,
+    );
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(24, 6, 24, 6),
+      child: Row(
+        children: [
+          Expanded(child: Text('CATEGORY', style: style)),
+          SizedBox(
+            width: _assignedWidth,
+            child: Text('ASSIGNED', style: style, textAlign: TextAlign.right),
+          ),
+          SizedBox(
+            width: _availableWidth,
+            child: Text('AVAILABLE', style: style, textAlign: TextAlign.right),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupCard extends StatelessWidget {
+  const _GroupCard({required this.name, required this.children});
+
+  final String name;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    clipBehavior: Clip.antiAlias,
+    decoration: BoxDecoration(
+      color: Palette.card,
+      border: Border.all(color: Palette.cardBorder),
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Material(
+      color: Colors.transparent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            child: Text(
+              name,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Palette.muted,
+              ),
+            ),
+          ),
+          ...children,
+        ],
+      ),
+    ),
+  );
+}
+
+class _CategoryRow extends StatelessWidget {
+  const _CategoryRow({
+    required this.state,
+    required this.category,
+    required this.month,
+    required this.onTap,
+  });
+
+  final BudgetState state;
+  final Category category;
+  final CalendarMonth month;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final available = state.available(category.id, month);
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: Palette.divider)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisAlignment: MainAxisAlignment.center,
+          spacing: 6,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    category.name,
+                    style: const TextStyle(fontSize: 15),
+                  ),
+                ),
+                SizedBox(
+                  width: _assignedWidth,
+                  child: Text(
+                    state.assigned(category.id, month).format(),
+                    textAlign: TextAlign.right,
+                    style: amountStyle(fontSize: 13, color: Palette.muted),
+                  ),
+                ),
+                SizedBox(
+                  width: _availableWidth,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: AvailablePill(available),
+                  ),
+                ),
+              ],
+            ),
+            if (available.isNegative)
+              Text(
+                'Overspent · comes out of '
+                '${monthName(month.next)}’s Ready to Assign',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Palette.problemText,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }

@@ -13,6 +13,18 @@ abstract final class Palette {
   static const teal = Color(0xFF0A6B5C);
   static const problemText = Color(0xFF8F3F09);
   static const heroLabel = Color(0xFFB9BEB8);
+
+  /// A light orange that reads on [ink], for problems on the hero card.
+  static const problemOnDark = Color(0xFFF4B183);
+
+  /// Available pills: positive, zero and negative.
+  static const positivePill = Color(0xFFDDEFEA);
+  static const positiveText = Color(0xFF0A5A4D);
+  static const zeroPill = Color(0xFFECEDEA);
+  static const problemPill = Color(0xFFFBE8DA);
+
+  /// The grey "after" summary card on Move money.
+  static const summary = Color(0xFFE7E9E4);
 }
 
 const sansFamily = 'IBMPlexSans';
