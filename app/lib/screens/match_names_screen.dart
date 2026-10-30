@@ -10,8 +10,8 @@ import 'map_tags_screen.dart';
 
 /// Import from Actual (ticket 14), step two: the names the import creates.
 ///
-/// Pairing these names with a YNAB export comes with the comparison ticket;
-/// this screen is where the person checks them first.
+/// Pairing these names with a YNAB export happens on Import & compare; this
+/// screen is where the person checks them first.
 class MatchNamesScreen extends StatefulWidget {
   const MatchNamesScreen({
     super.key,

@@ -14,6 +14,7 @@ import 'connect_bank_screen.dart';
 import 'encrypted_sync_screen.dart';
 import 'export_screen.dart';
 import 'forecast_screen.dart';
+import 'import_compare_screen.dart';
 import 'import_screen.dart';
 import 'mcp_screen.dart';
 import 'schedules_screen.dart';
@@ -153,6 +154,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           label: 'Import from Actual',
           onTap: () => _open(
             ImportActualScreen(
+              engine: widget.engine,
+              services: widget.services,
+            ),
+          ),
+        ),
+        SettingsRow(
+          label: 'Import & compare',
+          onTap: () => _open(
+            ImportCompareScreen(
               engine: widget.engine,
               services: widget.services,
             ),
