@@ -14,11 +14,17 @@ class MoveMoneyScreen extends StatefulWidget {
     required this.engine,
     required this.fromCategoryId,
     required this.month,
+    this.toCategoryId,
+    this.amount,
   });
 
   final BudgetEngine engine;
   final String fromCategoryId;
   final CalendarMonth month;
+
+  /// Fills in the To Category and the amount, as Cover does on Assign.
+  final String? toCategoryId;
+  final Money? amount;
 
   @override
   State<MoveMoneyScreen> createState() => _MoveMoneyScreenState();
@@ -26,8 +32,8 @@ class MoveMoneyScreen extends StatefulWidget {
 
 class _MoveMoneyScreenState extends State<MoveMoneyScreen> {
   /// A Category id, [readyToAssignCategory], or null until chosen.
-  String? _to;
-  final _amount = TextEditingController();
+  late String? _to = widget.toCategoryId;
+  late final _amount = TextEditingController(text: widget.amount?.format());
 
   BudgetState get _state => widget.engine.state;
 

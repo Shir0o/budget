@@ -37,6 +37,11 @@ abstract final class Palette {
 
   /// The grey "after" summary card on Move money.
   static const summary = Color(0xFFE7E9E4);
+
+  /// The light teal on the dark hero card: the Assign button and the
+  /// "after this batch" amount.
+  static const heroAccent = Color(0xFF7FD4C1);
+  static const onHeroAccent = Color(0xFF0B2B25);
 }
 
 const sansFamily = 'IBMPlexSans';

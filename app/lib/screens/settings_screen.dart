@@ -5,6 +5,7 @@ import '../services.dart';
 import '../settings_widgets.dart';
 import '../theme.dart';
 import 'app_lock_screen.dart';
+import 'categories_screen.dart';
 import 'export_screen.dart';
 
 /// Settings (canvas: Settings). It lists only what exists today. A later
@@ -37,6 +38,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SettingsRow(
           label: 'Name',
           value: widget.engine.state.budget?.name ?? '',
+        ),
+        SettingsRow(
+          label: 'Category priority',
+          value: '${widget.engine.state.priority.length} categories',
+          onTap: () => _open(CategoriesScreen(engine: widget.engine)),
         ),
       ],
     ),

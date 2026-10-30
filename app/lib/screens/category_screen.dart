@@ -5,10 +5,12 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'history_screen.dart';
 import 'move_money_screen.dart';
+import 'set_target_screen.dart';
+import 'target_parts.dart';
 
 /// Category detail for one month (canvas: Category): Carry + Assigned +
-/// Activity = Available, and the month's transactions. Target and
-/// Automation Mode arrive with ticket 09.
+/// Activity = Available, its Target and Automation Mode, and the month's
+/// transactions.
 class CategoryScreen extends StatefulWidget {
   const CategoryScreen({
     super.key,
@@ -33,14 +35,23 @@ class _CategoryScreenState extends State<CategoryScreen> {
   BudgetState get _state => widget.engine.state;
 
   Future<void> _assign() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Palette.card,
-      builder: (_) => _AssignSheet(
-        engine: widget.engine,
-        categoryId: widget.categoryId,
-        month: widget.month,
+    await showAssignSheet(
+      context,
+      engine: widget.engine,
+      categoryId: widget.categoryId,
+      month: widget.month,
+    );
+    setState(() {});
+  }
+
+  Future<void> _editTarget() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SetTargetScreen(
+          engine: widget.engine,
+          categoryId: widget.categoryId,
+          month: widget.month,
+        ),
       ),
     );
     setState(() {});
@@ -256,6 +267,19 @@ class _CategoryScreenState extends State<CategoryScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  TargetSection(
+                    state: state,
+                    categoryId: id,
+                    month: month,
+                    onEdit: _editTarget,
+                    onMode: (mode) {
+                      widget.engine.execute(
+                        SetAutomationMode(categoryId: id, mode: mode),
+                      );
+                      setState(() {});
+                    },
+                  ),
+                  const SizedBox(height: 12),
                   CardBox(
                     padding: EdgeInsets.zero,
                     child: Column(
@@ -380,17 +404,39 @@ class _ActivityRow extends StatelessWidget {
   );
 }
 
+/// Opens the sheet that sets [categoryId]'s Assignment for [month],
+/// filled in with [amount], or with the current Assignment.
+Future<void> showAssignSheet(
+  BuildContext context, {
+  required BudgetEngine engine,
+  required String categoryId,
+  required CalendarMonth month,
+  Money? amount,
+}) => showModalBottomSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  backgroundColor: Palette.card,
+  builder: (_) => _AssignSheet(
+    engine: engine,
+    categoryId: categoryId,
+    month: month,
+    amount: amount,
+  ),
+);
+
 /// Changes the Category's Assignment for the month.
 class _AssignSheet extends StatefulWidget {
   const _AssignSheet({
     required this.engine,
     required this.categoryId,
     required this.month,
+    this.amount,
   });
 
   final BudgetEngine engine;
   final String categoryId;
   final CalendarMonth month;
+  final Money? amount;
 
   @override
   State<_AssignSheet> createState() => _AssignSheetState();
@@ -398,9 +444,10 @@ class _AssignSheet extends StatefulWidget {
 
 class _AssignSheetState extends State<_AssignSheet> {
   late final _amount = TextEditingController(
-    text: widget.engine.state
-        .assigned(widget.categoryId, widget.month)
-        .format(),
+    text:
+        (widget.amount ??
+                widget.engine.state.assigned(widget.categoryId, widget.month))
+            .format(),
   );
   String? _error;
 

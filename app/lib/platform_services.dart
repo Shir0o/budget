@@ -72,6 +72,16 @@ final class SecureDevicePrefs implements DevicePrefs {
   @override
   Future<void> writeLastBudgetId(String id) =>
       _storage.write(key: _lastBudgetId, value: id);
+
+  @override
+  Future<CalendarMonth?> readAutomationMonth(String budgetId) async {
+    final iso = await _storage.read(key: 'automation-month:$budgetId');
+    return iso == null ? null : CalendarMonth.parse(iso);
+  }
+
+  @override
+  Future<void> writeAutomationMonth(String budgetId, CalendarMonth month) =>
+      _storage.write(key: 'automation-month:$budgetId', value: month.toIso());
 }
 
 final class SystemFileSaver implements FileSaver {

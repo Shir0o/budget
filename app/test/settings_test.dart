@@ -65,9 +65,9 @@ void main() {
       expect(find.text('Export & backup'), findsOneWidget);
       expect(find.text('App lock'), findsOneWidget);
       expect(find.text('Off'), findsOneWidget);
+      expect(find.text('Category priority'), findsOneWidget);
       // Rows for features that aren't built yet stay hidden.
       for (final hidden in [
-        'Category priority',
         'Business tags',
         'Business report',
         'Forecast',
