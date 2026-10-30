@@ -529,6 +529,15 @@ final class BudgetState {
         _move(_categories, _removedCategories, p['categoryId'] as String);
       case EventType.categoryRestored:
         _move(_removedCategories, _categories, p['categoryId'] as String);
+      case EventType.reconciled:
+        final accountId = p['accountId'] as String;
+        for (final t in _transactions.values.toList()) {
+          if (t.accountId == accountId && t.cleared == ClearedStatus.cleared) {
+            _transactions[t.id] = t._copyWith(
+              cleared: ClearedStatus.reconciled,
+            );
+          }
+        }
       case EventType.categoryGroupCreated:
         final id = p['categoryGroupId'] as String;
         _groups[id] = CategoryGroup(id: id, name: p['name'] as String);

@@ -104,6 +104,10 @@ abstract final class EventType {
   /// `{categoryId}`
   static const categoryArchived = 'CategoryArchived';
 
+  /// `{accountId, date, clearedBalanceCents}`. Every cleared transaction in
+  /// the account at that point becomes Reconciled (ticket 09).
+  static const reconciled = 'Reconciled';
+
   /// `{category, month, deltaCents}`, where `month` is `YYYY-MM`. A delta,
   /// so concurrent Assignments from two devices add up (ticket 06).
   static const assignmentChanged = 'AssignmentChanged';

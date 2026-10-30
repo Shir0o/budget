@@ -176,6 +176,9 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
         }),
       ]);
 
+    case Reconcile():
+      return _reconcile(command, state, stamp);
+
     case EditTransaction():
       return _editTransaction(command, state, stamp);
 
@@ -489,6 +492,10 @@ CommandResult _editTransaction(
   final transaction = state.transaction(command.transactionId);
   if (transaction == null) {
     return const Rejected(Rejection.unknownTransaction);
+  }
+  if (transaction.cleared == ClearedStatus.reconciled &&
+      !command.confirmReconciled) {
+    return const Rejected(Rejection.reconciledNeedsConfirmation);
   }
   if (_checkText([command.payee, command.memo]) case final rejected?) {
     return rejected;

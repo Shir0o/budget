@@ -216,3 +216,44 @@ List<Event> _mirrorTransfer(
         }),
   ];
 }
+
+// Reconcile (ticket 09).
+
+CommandResult _reconcile(Reconcile command, BudgetState state, _Stamp stamp) {
+  if (state.account(command.accountId) == null) {
+    return const Rejected(Rejection.unknownAccount);
+  }
+  final difference =
+      command.bankBalance - state.clearedBalance(command.accountId);
+  final adjust = difference != Money.zero;
+  if (adjust && !command.addAdjustment) {
+    return const Rejected(Rejection.reconcileMismatch);
+  }
+  return Accepted([
+    if (adjust)
+      stamp.event(EventType.transactionCreated, {
+        'transactionId': newId(),
+        'accountId': command.accountId,
+        'date': command.date.toIso(),
+        'payee': 'Reconciliation Adjustment',
+        'memo': '',
+        'cleared': ClearedStatus.cleared.name,
+        'amountCents': difference.cents,
+        'lines': [
+          {
+            'lineId': newId(),
+            'amountCents': difference.cents,
+            'category': readyToAssignCategory,
+            'memo': '',
+            // Only a person's review counts (ADR 0003).
+            'reviewed': false,
+          },
+        ],
+      }),
+    stamp.event(EventType.reconciled, {
+      'accountId': command.accountId,
+      'date': command.date.toIso(),
+      'clearedBalanceCents': command.bankBalance.cents,
+    }),
+  ]);
+}
