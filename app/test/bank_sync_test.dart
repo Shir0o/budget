@@ -15,11 +15,15 @@ final _setupToken = base64Encode(
 
 /// The bridge's answer: one checking account with a single charge for
 /// [amount], dated now so a fresh linked-from date includes it.
-String _fetchJson({String amount = '-48.20', String id = 'tx-1'}) {
+String _fetchJson({
+  String amount = '-48.20',
+  String id = 'tx-1',
+  List<String> errors = const [],
+}) {
   final now = DateTime.now();
   final posted = now.millisecondsSinceEpoch ~/ 1000;
   return jsonEncode({
-    'errors': <String>[],
+    'errors': errors,
     'accounts': [
       {
         'org': {'name': 'Sample Bank'},
@@ -80,27 +84,50 @@ final class _Seed {
   late final String groceries;
 }
 
-AppServices _services(FakeSimpleFinTransport transport) => AppServices(
+AppServices _services(
+  FakeSimpleFinTransport transport, {
+  FakeBankSyncScheduler? scheduler,
+}) => AppServices(
   keys: InMemoryBudgetKeyStore(),
   prefs: InMemoryDevicePrefs(),
   saver: InMemoryFileSaver(),
   authenticator: FakeAuthenticator(),
   simpleFin: transport,
+  scheduler: scheduler,
 );
 
-FakeSimpleFinTransport _transport({String amount = '-48.20'}) =>
-    FakeSimpleFinTransport(
-      replies: {
-        'POST /simplefin/claim/abc123': const SimpleFinReply(
-          200,
-          '$_accessUrl\n',
-        ),
-        'GET /simplefin/access/xyz/accounts': SimpleFinReply(
-          200,
-          _fetchJson(amount: amount),
-        ),
-      },
-    );
+FakeSimpleFinTransport _transport({
+  String amount = '-48.20',
+  List<String> errors = const [],
+}) => FakeSimpleFinTransport(
+  replies: {
+    'POST /simplefin/claim/abc123': const SimpleFinReply(200, '$_accessUrl\n'),
+    'GET /simplefin/access/xyz/accounts': SimpleFinReply(
+      200,
+      _fetchJson(amount: amount, errors: errors),
+    ),
+  },
+);
+
+/// The book of a device that has connected [checking] and linked it.
+SimpleFinBook _linkedBook(
+  String checking, {
+  AuthState auth = AuthState.linked,
+  List<BankError> errors = const [],
+}) => SimpleFinBook(
+  accessUrl: _accessUrl,
+  links: [
+    LinkedAccount(
+      simpleFinId: 'acct-1',
+      institution: 'Sample Bank',
+      name: 'Everyday Checking ...1234',
+      linkedFrom: today().addDays(-30),
+      accountId: checking,
+    ),
+  ],
+  auth: auth,
+  errors: errors,
+);
 
 /// The default 800 × 600 test window: the test font is much wider than
 /// IBM Plex, so a phone-width Settings row would overflow on it alone.
@@ -258,5 +285,89 @@ void main() {
     );
     expect(button.onPressed, isNull);
     expect(transport.requests, isEmpty);
+  });
+
+  testWidgets('an auth failure pauses automatic fetches until re-link', (
+    tester,
+  ) async {
+    // Tall enough that the whole screen, banner included, is laid out.
+    tester.view.physicalSize = const Size(1000, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final seed = _Seed();
+    final scheduler = FakeBankSyncScheduler();
+    final services = _services(_transport(), scheduler: scheduler);
+    await services.prefs.writeSimpleFinBook(
+      _linkedBook(
+        seed.checking,
+        auth: AuthState.needsRelink,
+        errors: [
+          BankError(
+            message: 'SimpleFIN refused the access URL. Re-link your bank.',
+            day: today(),
+            auth: true,
+          ),
+        ],
+      ),
+    );
+    await _pump(tester, BudgetApp(engine: seed.engine, services: services));
+    await _openBankSync(tester);
+
+    // The message and the pause are on screen, and nothing is arranged in
+    // the background while the link is refused.
+    expect(
+      find.text('SimpleFIN refused the access URL. Re-link your bank.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('bank-sync-paused')), findsOneWidget);
+    expect(find.text('Paused until you re-link'), findsOneWidget);
+    expect(find.text('Re-link bank'), findsOneWidget);
+    expect(scheduler.cancelled, 1);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('setup-token')),
+      _setupToken,
+    );
+    await _tap(tester, find.byKey(const ValueKey('connect-bank')));
+
+    // The re-link clears the pause and the message, fetches once and hands
+    // the 6-hourly work back to the platform.
+    expect(find.text('Imported 1 new.'), findsOneWidget);
+    expect(find.text('19 of 20'), findsOneWidget);
+    expect(find.text('Every 6 hours, at most'), findsOneWidget);
+    expect(find.byKey(const ValueKey('bank-sync-paused')), findsNothing);
+    expect(scheduler.scheduled, 1);
+    final book = await services.prefs.readSimpleFinBook();
+    expect(book.auth, AuthState.linked);
+    expect(book.errors, isEmpty);
+  });
+
+  testWidgets('the bridge’s errors stay as a banner after leaving', (
+    tester,
+  ) async {
+    // Tall enough that the whole screen, banner included, is laid out.
+    tester.view.physicalSize = const Size(1000, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final seed = _Seed();
+    final services = _services(
+      _transport(errors: ['Re-authenticate with your bank.']),
+    );
+    await services.prefs.writeSimpleFinBook(_linkedBook(seed.checking));
+    await _pump(tester, BudgetApp(engine: seed.engine, services: services));
+    await _openBankSync(tester);
+
+    await _tap(tester, find.byKey(const ValueKey('fetch-now')));
+    expect(find.text('Re-authenticate with your bank.'), findsOneWidget);
+
+    // Back to Settings and into Bank sync again: the message is kept, not
+    // swallowed when the fetch screen closes.
+    await _tap(tester, find.byTooltip('Back'));
+    await _tap(tester, find.text('Bank sync'));
+    expect(find.text('Re-authenticate with your bank.'), findsOneWidget);
+    final book = await services.prefs.readSimpleFinBook();
+    expect(book.errors.single.message, 'Re-authenticate with your bank.');
   });
 }

@@ -6,3 +6,4 @@ export 'src/access.dart';
 export 'src/book.dart';
 export 'src/claim.dart';
 export 'src/client.dart';
+export 'src/fetch_schedule.dart';

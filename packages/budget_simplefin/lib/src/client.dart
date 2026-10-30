@@ -43,9 +43,13 @@ final class SimpleFinRequest {
 
 /// A claim or fetch that failed, with a message to show the person.
 final class SimpleFinException implements Exception {
-  const SimpleFinException(this.message);
+  const SimpleFinException(this.message, {this.authFailed = false});
 
   final String message;
+
+  /// True when the bridge refused the access URL itself, which pauses
+  /// automatic fetches until the person re-links (ticket 10).
+  final bool authFailed;
 
   @override
   String toString() => message;
@@ -112,9 +116,10 @@ final class SimpleFinClient {
       access.accountsUri(start: start, end: end),
       authorization: access.authorization,
     );
-    if (reply.statusCode == 403) {
+    if (reply.statusCode == 401 || reply.statusCode == 403) {
       throw const SimpleFinException(
         'SimpleFIN refused the access URL. Re-link your bank.',
+        authFailed: true,
       );
     }
     if (reply.statusCode != 200) {

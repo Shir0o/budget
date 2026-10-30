@@ -54,11 +54,15 @@ void main() {
           _setupToken('https://bridge.example/simplefin/claim/abc123'),
         ),
         throwsA(
-          isA<SimpleFinException>().having(
-            (error) => error.message,
-            'message',
-            contains('already claimed'),
-          ),
+          isA<SimpleFinException>()
+              .having(
+                (error) => error.message,
+                'message',
+                contains('already claimed'),
+              )
+              // A claimed setup token is not a refused access URL, so it
+              // does not pause automatic fetches.
+              .having((error) => error.authFailed, 'authFailed', isFalse),
         ),
       );
     });
@@ -188,11 +192,13 @@ void main() {
             today: _today,
           ),
           throwsA(
-            isA<SimpleFinException>().having(
-              (error) => error.message,
-              'message',
-              contains('Re-link'),
-            ),
+            isA<SimpleFinException>()
+                .having(
+                  (error) => error.message,
+                  'message',
+                  contains('Re-link'),
+                )
+                .having((error) => error.authFailed, 'authFailed', isTrue),
           ),
         );
       },

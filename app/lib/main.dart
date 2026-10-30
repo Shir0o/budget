@@ -9,14 +9,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:workmanager/workmanager.dart';
 
 import 'app.dart';
+import 'bank_background.dart';
+import 'bank_sync.dart';
 import 'budget_library.dart';
 import 'platform_services.dart';
 import 'services.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Android's background fetch runs in its own isolate (ticket 10); the
+  // entry point is top level so WorkManager can find it there.
+  if (Platform.isAndroid) {
+    await Workmanager().initialize(bankSyncDispatcher);
+  }
   LicenseRegistry.addLicense(() async* {
     final ofl = await rootBundle.loadString('assets/fonts/OFL.txt');
     yield LicenseEntryWithLineBreaks(['IBM Plex'], ofl);
@@ -41,6 +49,7 @@ Future<void> main() async {
     loader: const SystemFileLoader(),
     authenticator: LocalAuthenticator(),
     simpleFin: const HttpSimpleFinTransport(),
+    scheduler: const WorkManagerBankSyncScheduler(),
     // Google Drive's hidden app data folder only (ADR 0002). The token comes
     // from Google Sign-In, which needs the OAuth client id.
     drive: GoogleDriveAppData(
@@ -52,6 +61,9 @@ Future<void> main() async {
     mcp: Platform.isMacOS ? FileMcpStore(dir.path) : null,
     appLockEnabled: await prefs.readAppLockEnabled(),
   );
+  // Arrange or stop the 6-hourly fetch to match the bank book on this
+  // device (ticket 10): on after a connection, off after an auth failure.
+  await syncBankSchedule(services.scheduler, await prefs.readSimpleFinBook());
   runApp(BudgetApp(library: library, services: services));
 }
 
