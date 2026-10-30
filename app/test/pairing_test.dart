@@ -183,6 +183,8 @@ void main() {
     final services = _services();
     final auth = services.authenticator as FakeAuthenticator;
     final budgetId = seed.engine.state.budget!.id;
+    // Sync setup creates the key; the phrase screen only reads it.
+    await services.keys.keyFor(budgetId);
     await tester.pumpWidget(BudgetApp(engine: seed.engine, services: services));
     await _openSettings(tester);
 
