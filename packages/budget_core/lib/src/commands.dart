@@ -3,6 +3,7 @@ import 'budget_state.dart';
 import 'civil_date.dart';
 import 'event.dart';
 import 'history.dart';
+import 'import_batch.dart';
 import 'money.dart';
 import 'review.dart';
 import 'target.dart';
@@ -433,6 +434,20 @@ final class ImportBankTransactions extends Command {
   final List<BankEntry> entries;
 }
 
+// Migration (ticket 14).
+
+/// Writes a whole import as one Event group with actor `import`: accounts,
+/// Category groups and Categories, Assignments, Targets, Scheduled
+/// Transactions and Transactions. It is checked as a whole and refused as a
+/// whole: in particular, every account's transactions must add up to
+/// Actual's balance for it, to the cent. Rules are never imported and only a
+/// person marks a current-year line Reviewed (ADR 0003).
+final class CommitImport extends Command {
+  const CommitImport(this.batch);
+
+  final ImportBatch batch;
+}
+
 // Business Tags (ticket 11).
 
 /// Adds a custom Business Tag (ticket 04). Its name must not be a preset or
@@ -616,6 +631,15 @@ enum Rejection {
 
   /// [SetBusinessUse] for a tag that doesn't exist.
   unknownBusinessTag,
+
+  /// [CommitImport] with an id the log already has, a one-sided transfer, a
+  /// line that doesn't sum to its transaction, or a like break of the rules.
+  importPlanInvalid,
+
+  /// [CommitImport] where an account's imported transactions don't add up to
+  /// Actual's balance for it, to the cent (ticket 14). A parser bug, never a
+  /// user problem.
+  importBalanceMismatch,
 }
 
 /// What a command produced.

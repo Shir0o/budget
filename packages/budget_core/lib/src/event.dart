@@ -74,7 +74,9 @@ abstract final class EventType {
   /// business, memo and reviewed. One side of a transfer also has
   /// `transferAccountId` and `transferTransactionId`, and a card or
   /// tracking account's Starting Balance has `startingBalance: true`. A
-  /// bank fetch also has `bankId`, the SimpleFIN id it updates in place.
+  /// bank fetch also has `bankId`, the SimpleFIN id it updates in place. An
+  /// import also has `importedCategory`, the Actual income category name an
+  /// income line lost when it went to Ready to Assign (ticket 14).
   static const transactionCreated = 'TransactionCreated';
 
   /// `{transactionId, fields: {payee?, date?, memo?, cleared?}}`. Each field

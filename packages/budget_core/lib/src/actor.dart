@@ -18,6 +18,9 @@ final class Actor {
   /// A hand-run bank fetch (ticket 10).
   static const bankSync = Actor.fromValue('bank-sync');
 
+  /// A one-time import, such as the Actual wizard (ticket 14).
+  static const imported = Actor.fromValue('import');
+
   final String value;
 
   /// A person on one of their devices (`user@…`), as opposed to bank sync,

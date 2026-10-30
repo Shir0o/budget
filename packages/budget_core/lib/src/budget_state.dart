@@ -181,6 +181,7 @@ final class Transaction {
     this.transferTransactionId,
     this.startingBalance = false,
     this.bankId,
+    this.importedCategory,
   });
 
   final String id;
@@ -202,6 +203,10 @@ final class Transaction {
   /// updates it in place (ticket 10). Null for a transaction someone
   /// entered by hand.
   final String? bankId;
+
+  /// The Actual income category this transaction's income lost when it went
+  /// to Ready to Assign (ticket 14). Read-only metadata; null otherwise.
+  final String? importedCategory;
 
   bool get isTransfer => transferTransactionId != null;
 
@@ -232,6 +237,7 @@ final class Transaction {
     transferTransactionId: transferTransactionId,
     startingBalance: startingBalance,
     bankId: bankId,
+    importedCategory: importedCategory,
   );
 }
 
@@ -494,6 +500,7 @@ final class BudgetState {
           transferTransactionId: p['transferTransactionId'] as String?,
           startingBalance: p['startingBalance'] as bool? ?? false,
           bankId: p['bankId'] as String?,
+          importedCategory: p['importedCategory'] as String?,
         );
       case EventType.transactionFieldsSet:
         final id = p['transactionId'] as String;

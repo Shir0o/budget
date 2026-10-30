@@ -38,6 +38,7 @@ Future<void> main() async {
     keys: const SecureBudgetKeyStore(secrets),
     prefs: prefs,
     saver: const SystemFileSaver(),
+    loader: const SystemFileLoader(),
     authenticator: LocalAuthenticator(),
     simpleFin: const HttpSimpleFinTransport(),
     // Google Drive's hidden app data folder only (ADR 0002). The token comes

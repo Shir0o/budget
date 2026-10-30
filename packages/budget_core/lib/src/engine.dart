@@ -11,6 +11,7 @@ import 'event.dart';
 import 'event_log.dart';
 import 'history.dart';
 import 'hlc.dart';
+import 'import_batch.dart';
 import 'money.dart';
 import 'review.dart';
 import 'sensitive_numbers.dart';
@@ -18,6 +19,7 @@ import 'target.dart';
 
 part 'engine_accounts.dart';
 part 'engine_bank_sync.dart';
+part 'engine_import.dart';
 part 'engine_schedules.dart';
 part 'engine_targets.dart';
 
@@ -93,8 +95,9 @@ final class BudgetEngine {
       BudgetState.replay(eventsAsOf(_events, date));
 
   /// Runs [command]. A [RunAutomation] is recorded with actor
-  /// `automation`. Reviewing an income line also starts an automation run
-  /// for the current month, as its own group (ticket 08).
+  /// `automation`, and a [CommitImport] with actor `import`. Reviewing an
+  /// income line also starts an automation run for the current month, as its
+  /// own group (ticket 08).
   CommandResult execute(Command command) {
     final before = _state;
     final result = _execute(command);
@@ -113,6 +116,7 @@ final class BudgetEngine {
     final stamp = _Stamp(this, switch (command) {
       RunAutomation() => Actor.automation,
       ImportBankTransactions() => Actor.bankSync,
+      CommitImport() => Actor.imported,
       _ => actor,
     });
     final result = _decide(command, _state, stamp);
@@ -366,6 +370,8 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
       return _enterSchedule(command, state, stamp);
     case ImportBankTransactions():
       return _importBankTransactions(command, state, stamp);
+    case CommitImport():
+      return _commitImport(command, state, stamp);
     case CreateBusinessTag(:final name, :final line, :final rule):
       final trimmed = name.trim();
       if (trimmed.isEmpty) return const Rejected(Rejection.nameRequired);
