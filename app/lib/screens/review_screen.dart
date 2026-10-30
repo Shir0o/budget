@@ -225,6 +225,38 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 }),
               ),
             ),
+          // Bank sync put the line back in Review because its amount
+          // changed (ticket 10).
+          if (item.line.note case final note?)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Palette.problemPill,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 8,
+                children: [
+                  const Icon(
+                    Icons.change_circle_outlined,
+                    size: 18,
+                    color: Palette.problemText,
+                  ),
+                  Expanded(
+                    child: Text(
+                      note,
+                      key: const ValueKey('review-bank-note'),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Palette.problemText,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           LabeledField(
             label: 'Category',
             child: OutlinedButton(

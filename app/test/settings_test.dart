@@ -70,9 +70,10 @@ void main() {
       expect(find.text('Forecast'), findsOneWidget);
       expect(find.text('Business tags'), findsOneWidget);
       expect(find.text('Business report'), findsOneWidget);
+      expect(find.text('Bank sync'), findsOneWidget);
+      expect(find.text('SimpleFIN'), findsOneWidget);
       // Rows for features that aren't built yet stay hidden.
       for (final hidden in [
-        'Bank sync',
         'Encrypted sync',
         'AI apps (MCP)',
         'Import & compare',

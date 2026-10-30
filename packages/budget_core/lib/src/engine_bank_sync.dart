@@ -20,8 +20,8 @@ CommandResult _importBankTransactions(
     // One bank id arrives once per fetch; a repeat would duplicate the line.
     if (!seen.add('${entry.accountId}/${entry.bankId}')) continue;
     final existing = state.bankTransaction(entry.accountId, entry.bankId);
-    final payee = _bankText(entry.description.trim());
-    final memo = _bankText(entry.memo.trim());
+    final payee = maskSensitiveNumbers(entry.description.trim());
+    final memo = maskSensitiveNumbers(entry.memo.trim());
     final cleared = entry.pending
         ? ClearedStatus.uncleared
         : ClearedStatus.cleared;
@@ -92,22 +92,4 @@ CommandResult _importBankTransactions(
   }
   if (events.isEmpty) return const Rejected(Rejection.noChange);
   return Accepted(events);
-}
-
-/// Bank text never carries a full card or account number into the log: a
-/// run of digits keeps only its last four (ticket 09).
-String _bankText(String text) {
-  final found = findSensitiveNumbers(text);
-  if (found.isEmpty) return text;
-  final buffer = StringBuffer();
-  var at = 0;
-  for (final number in found) {
-    final digits = number.digits;
-    buffer
-      ..write(text.substring(at, number.start))
-      ..write('••••${digits.substring(digits.length - 4)}');
-    at = number.end;
-  }
-  buffer.write(text.substring(at));
-  return buffer.toString();
 }

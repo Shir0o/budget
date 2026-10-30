@@ -8,6 +8,7 @@ import 'app_lock_screen.dart';
 import 'business_report_screen.dart';
 import 'business_tags_screen.dart';
 import 'categories_screen.dart';
+import 'connect_bank_screen.dart';
 import 'export_screen.dart';
 import 'forecast_screen.dart';
 import 'schedules_screen.dart';
@@ -78,6 +79,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     SettingsSection(
       title: 'Data',
       rows: [
+        SettingsRow(
+          label: 'Bank sync',
+          value: 'SimpleFIN',
+          onTap: () => _open(
+            ConnectBankScreen(engine: widget.engine, services: widget.services),
+          ),
+        ),
         SettingsRow(
           label: 'Export & backup',
           value: 'CSV, JSON, backup',

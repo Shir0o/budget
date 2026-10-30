@@ -1,0 +1,41 @@
+{
+  "errors": [],
+  "accounts": [
+    {
+      "org": { "name": "Sample Bank", "domain": "sample.example" },
+      "id": "acct-1",
+      "name": "Everyday Checking ...1234",
+      "currency": "USD",
+      "balance": "1234.56",
+      "available-balance": "1200.06",
+      "balance-date": 1794441600,
+      "transactions": [
+        {
+          "id": "tx-1",
+          "posted": 1794268800,
+          "amount": "-48.20",
+          "description": "CORNER BISTRO 8841",
+          "payee": "Corner Bistro",
+          "memo": "Lunch"
+        },
+        {
+          "id": "tx-2",
+          "posted": 0,
+          "transacted_at": 1794441600,
+          "amount": "-12.00",
+          "description": "PENDING HOLD",
+          "pending": true
+        }
+      ]
+    },
+    {
+      "org": { "name": "Sample Bank" },
+      "id": "acct-2",
+      "name": "Card 4111 1111 1111 1111",
+      "currency": "USD",
+      "balance": "-302.15",
+      "balance-date": 1794441600,
+      "transactions": []
+    }
+  ]
+}

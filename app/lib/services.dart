@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:budget_core/budget_core.dart';
+import 'package:budget_simplefin/budget_simplefin.dart';
 import 'package:flutter/widgets.dart';
 
 /// Where each budget's [BudgetKey] is kept. The real one is Android
@@ -30,6 +31,12 @@ abstract interface class DevicePrefs {
   /// (ticket 08).
   Future<CalendarMonth?> readAutomationMonth(String budgetId);
   Future<void> writeAutomationMonth(String budgetId, CalendarMonth month);
+
+  /// This device's bank-sync connection and today's request count
+  /// (ticket 10). Only the device that runs bank sync holds the access
+  /// URL, and none of it is part of the budget.
+  Future<SimpleFinBook> readSimpleFinBook();
+  Future<void> writeSimpleFinBook(SimpleFinBook book);
 }
 
 /// Hands a finished file to the person to save where they choose.
@@ -63,8 +70,10 @@ final class AppServices {
     required this.prefs,
     required this.saver,
     required this.authenticator,
+    SimpleFinTransport? simpleFin,
     bool appLockEnabled = false,
-  }) : appLockEnabled = ValueNotifier(appLockEnabled);
+  }) : appLockEnabled = ValueNotifier(appLockEnabled),
+       simpleFin = SimpleFinClient(simpleFin ?? FakeSimpleFinTransport());
 
   /// In-memory services for tests and previews.
   factory AppServices.inMemory() => AppServices(
@@ -78,6 +87,10 @@ final class AppServices {
   final DevicePrefs prefs;
   final FileSaver saver;
   final Authenticator authenticator;
+
+  /// The SimpleFIN Bridge client. Tests answer through their own
+  /// [SimpleFinTransport], so nothing goes to the network.
+  final SimpleFinClient simpleFin;
 
   /// Whether the app lock is on. Read at launch so the first frame is
   /// already locked.
@@ -136,6 +149,7 @@ final class InMemoryDevicePrefs implements DevicePrefs {
   var _budgetIds = <String>[];
   String? _lastBudgetId;
   final _automationMonths = <String, CalendarMonth>{};
+  SimpleFinBook _simpleFin = const SimpleFinBook();
 
   @override
   Future<bool> readAppLockEnabled() async => _appLock;
@@ -171,6 +185,13 @@ final class InMemoryDevicePrefs implements DevicePrefs {
     String budgetId,
     CalendarMonth month,
   ) async => _automationMonths[budgetId] = month;
+
+  @override
+  Future<SimpleFinBook> readSimpleFinBook() async => _simpleFin;
+
+  @override
+  Future<void> writeSimpleFinBook(SimpleFinBook book) async =>
+      _simpleFin = book;
 }
 
 /// Keeps "saved" files in [saved] instead of writing them anywhere.
