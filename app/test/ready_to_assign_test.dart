@@ -35,13 +35,22 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('\$4,210.55'), findsOneWidget);
 
-    await tester.tap(find.text('Record income'));
+    await tester.ensureVisible(find.text('New transaction'));
+    await tester.tap(find.text('New transaction'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('income-amount')), '3000');
+    await tester.tap(find.text('Inflow'));
     await tester.enterText(
-      find.byKey(const ValueKey('income-payee')),
+      find.byKey(const ValueKey('transaction-amount')),
+      '3000',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('transaction-payee')),
       'Employer',
     );
+    await tester.tap(find.text('Choose'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ready to Assign (income)'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../widgets.dart';
+import 'category_picker.dart';
 
 /// Move money (canvas: MoveMoney) from one Category to another, or back to
 /// Ready to Assign. A move between Categories leaves Ready to Assign
@@ -44,15 +45,12 @@ class _MoveMoneyScreenState extends State<MoveMoneyScreen> {
       : _state.category(id)!.name;
 
   Future<void> _pickTo() async {
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Palette.card,
-      builder: (_) => _CategoryPicker(
-        state: _state,
-        month: widget.month,
-        excluding: widget.fromCategoryId,
-      ),
+    final picked = await showCategoryPicker(
+      context,
+      state: _state,
+      month: widget.month,
+      title: 'Move to',
+      excluding: widget.fromCategoryId,
     );
     if (picked != null) setState(() => _to = picked);
   }
@@ -330,113 +328,4 @@ class _Change extends StatelessWidget {
       ),
     ],
   );
-}
-
-/// Picks where the money goes (canvas: CategoryPicker): Ready to Assign or
-/// any other active Category, by group, with the month's Available.
-class _CategoryPicker extends StatelessWidget {
-  const _CategoryPicker({
-    required this.state,
-    required this.month,
-    required this.excluding,
-  });
-
-  final BudgetState state;
-  final CalendarMonth month;
-  final String excluding;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget option(
-      String id,
-      String name,
-      Money amount, {
-      bool primary = false,
-    }) => InkWell(
-      onTap: () => Navigator.of(context).pop(id),
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 46),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Palette.divider)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                name,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: primary ? Palette.teal : Palette.ink,
-                  fontWeight: primary ? FontWeight.w500 : FontWeight.w400,
-                ),
-              ),
-            ),
-            Text(
-              amount.format(),
-              style: amountStyle(fontSize: 13, color: Palette.muted),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.8,
-      ),
-      child: ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 12),
-            child: Text(
-              'Move to',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-          ),
-          option(
-            readyToAssignCategory,
-            'Ready to Assign',
-            state.readyToAssign(thisMonth()),
-            primary: true,
-          ),
-          for (final group in state.categoryGroups) ...[
-            for (final (i, category)
-                in state.categories
-                    .where(
-                      (c) =>
-                          c.groupId == group.id &&
-                          !c.archived &&
-                          c.id != excluding,
-                    )
-                    .indexed) ...[
-              if (i == 0)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(
-                    group.name.toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.72,
-                      color: Palette.muted,
-                    ),
-                  ),
-                ),
-              option(
-                category.id,
-                category.name,
-                state.available(category.id, month),
-              ),
-            ],
-          ],
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Hint('Numbers are ${monthName(month)} Available.'),
-          ),
-        ],
-      ),
-    );
-  }
 }
