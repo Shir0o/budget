@@ -184,12 +184,28 @@ extension ScheduleQueries on BudgetState {
   /// Target sums the implied Repeating target of each of the Category's
   /// Scheduled Transactions (ticket 08); every other kind answers for
   /// itself.
+  ///
+  /// The Category's Carry counts once across its schedules: it is money
+  /// saved ahead, so it goes to the monthly-or-longer schedule due last
+  /// first, up to its amount, then to the next. Days and weeks ignore it,
+  /// as a Repeating Target does.
   Money neededFor(String categoryId, Target target, CalendarMonth month) {
-    final before = availableBeforeAssigning(categoryId, month);
+    final before = availableBeforeAssigning(categoryId, month, target);
     if (target is! DrivenByScheduleTarget) return target.needed(month, before);
+    final implied = [for (final s in schedulesFor(categoryId)) s.implied];
+    final long = implied.where((t) => !t.isShort).toList()
+      ..sort((a, b) => b.dueFor(month).compareTo(a.dueFor(month)));
     var total = Money.zero;
-    for (final schedule in schedulesFor(categoryId)) {
-      total += schedule.implied.needed(month, before);
+    for (final short in implied.where((t) => t.isShort)) {
+      total += short.needed(month, Money.zero);
+    }
+    var left = before;
+    for (final repeating in long) {
+      final share = left.compareTo(repeating.amount) < 0
+          ? left
+          : repeating.amount;
+      total += repeating.needed(month, share);
+      left -= share;
     }
     return total;
   }

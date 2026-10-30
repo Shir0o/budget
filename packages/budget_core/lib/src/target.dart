@@ -37,7 +37,9 @@ sealed class Target {
   }
 
   /// What the Category needs in [month], given its Available before
-  /// assigning (Carry + Activity). Never negative.
+  /// assigning: Carry + Activity for a [ByDateTarget], the Carry alone for
+  /// the spending kinds (`BudgetState.availableBeforeAssigning`). Never
+  /// negative.
   ///
   /// A [DrivenByScheduleTarget] has nothing of its own to answer with: its
   /// sum needs the Category's Scheduled Transactions, so

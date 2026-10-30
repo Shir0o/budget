@@ -129,10 +129,6 @@ class _SetTargetScreenState extends State<SetTargetScreen> {
     final state = widget.engine.state;
     final name = state.category(widget.categoryId)!.name;
     final draft = _draft;
-    final before = state.availableBeforeAssigning(
-      widget.categoryId,
-      widget.month,
-    );
     final scheduled = state.schedulesFor(widget.categoryId).length;
 
     return Scaffold(
@@ -329,7 +325,11 @@ class _SetTargetScreenState extends State<SetTargetScreen> {
                                   neededExplanation(
                                     draft,
                                     widget.month,
-                                    before,
+                                    state.availableBeforeAssigning(
+                                      widget.categoryId,
+                                      widget.month,
+                                      draft,
+                                    ),
                                     scheduled: scheduled,
                                   ),
                                   style: const TextStyle(
