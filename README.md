@@ -2,7 +2,7 @@
 
 A private, local-first, zero-based envelope budget. Android first, macOS second.
 
-> **Status:** business-logic spec only. There is no app code yet.
+> **Status:** early development. You can create a budget, add an account and record income.
 
 ## Privacy promises
 

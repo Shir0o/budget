@@ -118,7 +118,7 @@ Before introducing new features, enforce these gates:
 ## Context
 
 - Private, local-first, zero-based envelope budget. Flutter (Android first, then macOS). Single user, USD.
-- **Status:** spec only. Read [docs/wayfinder/map.md](docs/wayfinder/map.md) before any work. Every decision lives in exactly one ticket under `docs/wayfinder/tickets/`.
+- **Status:** in development; ticket 01 (#4) built the workspace. Read [docs/wayfinder/map.md](docs/wayfinder/map.md) before any work. Every decision lives in exactly one ticket under `docs/wayfinder/tickets/`.
 - Glossary: [CONTEXT.md](CONTEXT.md). Use its terms (Category, not "envelope"; Ready to Assign; Target; Business Tag; Review).
 - Decision records: [docs/adr/](docs/adr/).
 
@@ -136,4 +136,4 @@ See [Tech stack and module boundaries](docs/wayfinder/tickets/15-tech-stack.md).
 
 ## Tier
 
-Registered as Tier 2 until `budget_core` exists. Promote to Tier 1 (CI + required checks) in the PR that adds the first Dart code.
+Tier 1: the `Analyze & Test` CI check (`.github/workflows/ci.yml`) is required on `main`.
