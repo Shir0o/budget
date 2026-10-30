@@ -72,6 +72,7 @@ void main() {
     final seed = _Seed();
     await _pump(tester, seed.app());
 
+    await _tap(tester, find.text('Accounts'));
     await _tap(tester, find.text('Checking'));
     expect(find.text('Balance'), findsOneWidget);
     expect(find.text('500.00'), findsNWidgets(2)); // Balance and Cleared
@@ -223,6 +224,7 @@ void main() {
     );
     await _pump(tester, seed.app());
 
+    await _tap(tester, find.text('Accounts'));
     await _tap(tester, find.text('Checking'));
     await _tap(tester, find.text('Paper & Co.'));
     expect(find.text('Transaction'), findsOneWidget);
@@ -269,6 +271,7 @@ void main() {
     );
     await _pump(tester, seed.app());
 
+    await _tap(tester, find.text('Accounts'));
     await _tap(tester, find.text('Checking'));
     await _tap(tester, find.text('Corner Store'));
     await _tap(tester, find.byTooltip('Transaction options'));

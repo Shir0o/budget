@@ -12,6 +12,8 @@ import 'hlc.dart';
 import 'money.dart';
 import 'sensitive_numbers.dart';
 
+part 'engine_accounts.dart';
+
 const _uuid = Uuid();
 
 /// A new UUIDv7, used for Event, group and entity ids.
@@ -104,15 +106,20 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
           'name': name.trim(),
           'accountType': type.name,
         }),
-        _income(
-          stamp,
-          accountId: accountId,
-          amount: startingBalance,
-          date: command.asOf,
-          payee: 'Starting Balance',
-          // It is the bank's balance on that date.
-          cleared: ClearedStatus.cleared,
-        ),
+        if (type == AccountType.creditCard)
+          ..._cardPaymentCategory(state, stamp, accountId, name.trim()),
+        if (type == AccountType.creditCard || !type.onBudget)
+          _offBudgetStartingBalance(stamp, accountId, command)
+        else
+          _income(
+            stamp,
+            accountId: accountId,
+            amount: startingBalance,
+            date: command.asOf,
+            payee: 'Starting Balance',
+            // It is the bank's balance on that date.
+            cleared: ClearedStatus.cleared,
+          ),
       ]);
 
     case RecordIncome(:final accountId, :final amount):
@@ -159,14 +166,20 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
     case EditTransaction():
       return _editTransaction(command, state, stamp);
 
+    case CreateTransfer():
+      return _createTransfer(command, state, stamp);
+
     case DeleteTransaction(:final transactionId):
-      if (state.transaction(transactionId) == null) {
+      final transaction = state.transaction(transactionId);
+      if (transaction == null) {
         return const Rejected(Rejection.unknownTransaction);
       }
+      // Both sides of a transfer go together.
+      final pair = transaction.transferTransactionId;
       return Accepted([
-        stamp.event(EventType.transactionDeleted, {
-          'transactionId': transactionId,
-        }),
+        for (final id in [transactionId, ?pair])
+          if (state.transaction(id) != null)
+            stamp.event(EventType.transactionDeleted, {'transactionId': id}),
       ]);
 
     case CreateCategoryGroup(:final name):
@@ -388,7 +401,23 @@ CommandResult _editTransaction(
     if (_checkLines(state, amount, lines, kept: kept) case final rejected?) {
       return rejected;
     }
-    final stored = [for (final line in lines) _lineJson(line, stamp.actor)];
+    if (transaction.isTransfer) {
+      if (_checkTransferLines(state, transaction, amount, lines)
+          case final rejected?) {
+        return rejected;
+      }
+    }
+    final stored = [
+      for (final line in lines)
+        transaction.isTransfer
+            ? _transferLine(
+                line.amount,
+                line.category,
+                stamp.actor,
+                id: line.id,
+              )
+            : _lineJson(line, stamp.actor),
+    ];
     if (amount != transaction.amount ||
         jsonEncode(stored) !=
             jsonEncode(transaction.lines.map(_storedLine).toList())) {
@@ -402,5 +431,8 @@ CommandResult _editTransaction(
     }
   }
   if (events.isEmpty) return const Rejected(Rejection.noChange);
+  if (transaction.isTransfer) {
+    events.addAll(_mirrorTransfer(state, stamp, transaction, events));
+  }
   return Accepted(events);
 }

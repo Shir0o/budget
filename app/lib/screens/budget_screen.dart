@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../services.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'account_register_screen.dart';
 import 'add_account_screen.dart';
 import 'add_category_screen.dart';
 import 'budget_switcher.dart';
@@ -14,7 +13,7 @@ import 'settings_screen.dart';
 
 /// The Budget month (canvas: Main): Ready to Assign, then each category
 /// group's Categories with their Assigned and Available for the month.
-/// Assign, Review and card debt arrive with later tickets.
+/// Assign and Review arrive with later tickets.
 class BudgetScreen extends StatefulWidget {
   const BudgetScreen({super.key, required this.engine});
 
@@ -49,7 +48,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
     ].where((entry) => entry.$2.isNotEmpty).toList();
 
     return Scaffold(
-      bottomNavigationBar: const MainNav(),
+      bottomNavigationBar: MainNav(engine: engine, current: MainTab.budget),
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -153,27 +152,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         'money a job.',
                       ),
                     ),
-                  // Until the Accounts screen arrives with ticket 05, the
-                  // registers open from here.
-                  if (state.accounts.isNotEmpty) ...[
-                    _GroupCard(
-                      name: 'Accounts',
-                      children: [
-                        for (final account in state.accounts)
-                          _AccountRow(
-                            name: account.name,
-                            balance: state.balance(account.id),
-                            onTap: () => _open(
-                              AccountRegisterScreen(
-                                engine: engine,
-                                accountId: account.id,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                  ],
                   const SizedBox(height: 6),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -415,10 +393,19 @@ class _CategoryRow extends StatelessWidget {
                 ),
               ],
             ),
-            if (available.isNegative)
-              Text(
+            for (final note in [
+              if (state.cashOverspending(category.id, month).isPositive)
                 'Overspent · comes out of '
-                '${monthName(month.next)}’s Ready to Assign',
+                    '${monthName(month.next)}’s Ready to Assign',
+              if (state.creditOverspending(category.id, month).isPositive)
+                'Overspent on a card · stays as unfunded card debt',
+              if (category.cardAccountId case final card?
+                  when state.unfundedDebt(card, month).isPositive)
+                '${state.unfundedDebt(card, month).formatDollars()} of card '
+                    'debt not funded',
+            ])
+              Text(
+                note,
                 style: const TextStyle(
                   fontSize: 12,
                   color: Palette.problemText,
@@ -429,35 +416,4 @@ class _CategoryRow extends StatelessWidget {
       ),
     );
   }
-}
-
-class _AccountRow extends StatelessWidget {
-  const _AccountRow({
-    required this.name,
-    required this.balance,
-    required this.onTap,
-  });
-
-  final String name;
-  final Money balance;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    child: Container(
-      constraints: const BoxConstraints(minHeight: 48),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Palette.divider)),
-      ),
-      child: Row(
-        children: [
-          Expanded(child: Text(name, style: const TextStyle(fontSize: 15))),
-          Text(balance.format(), style: amountStyle(fontSize: 13)),
-          const Icon(Icons.chevron_right, size: 18, color: Palette.muted),
-        ],
-      ),
-    ),
-  );
 }

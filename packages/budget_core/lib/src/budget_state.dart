@@ -2,9 +2,22 @@ import 'civil_date.dart';
 import 'event.dart';
 import 'money.dart';
 
-/// The kinds of budget account this version supports. Credit cards and
-/// tracking accounts arrive with ticket 05.
-enum AccountType { checking, savings, cash }
+part 'budget_math.dart';
+
+/// The kinds of account (ticket 07). All but [tracking] are budget
+/// accounts.
+enum AccountType {
+  checking,
+  savings,
+  cash,
+  creditCard,
+
+  /// Counts toward net worth only, such as a 401k or a mortgage.
+  tracking;
+
+  /// Whether money in it affects the budget.
+  bool get onBudget => this != tracking;
+}
 
 final class Budget {
   const Budget({required this.id, required this.name});
@@ -51,12 +64,17 @@ final class Category {
     required this.groupId,
     required this.name,
     this.archived = false,
+    this.cardAccountId,
   });
 
   final String id;
   final String groupId;
   final String name;
   final bool archived;
+
+  /// The credit card account whose Card Payment Category this is, or null
+  /// for an ordinary Category.
+  final String? cardAccountId;
 }
 
 /// Whether a line is a personal or a business expense (ticket 09).
@@ -165,6 +183,9 @@ final class Transaction {
     required this.lines,
     this.memo = '',
     this.cleared = ClearedStatus.uncleared,
+    this.transferAccountId,
+    this.transferTransactionId,
+    this.startingBalance = false,
   });
 
   final String id;
@@ -173,6 +194,16 @@ final class Transaction {
   final String payee;
   final String memo;
   final ClearedStatus cleared;
+
+  /// For one side of a transfer, the other side's account and transaction.
+  final String? transferAccountId;
+  final String? transferTransactionId;
+
+  /// A card or tracking account's opening balance. Its line has no
+  /// Category and doesn't touch the budget (ticket 07 example 6).
+  final bool startingBalance;
+
+  bool get isTransfer => transferTransactionId != null;
 
   /// Negative for an outflow. Always the sum of [lines].
   final Money amount;
@@ -197,6 +228,9 @@ final class Transaction {
     cleared: cleared ?? this.cleared,
     amount: amount ?? this.amount,
     lines: lines ?? this.lines,
+    transferAccountId: transferAccountId,
+    transferTransactionId: transferTransactionId,
+    startingBalance: startingBalance,
   );
 }
 
@@ -214,18 +248,7 @@ final class BudgetState {
     for (final event in ordered) {
       state._apply(event);
     }
-    for (final transaction in state._transactions.values) {
-      for (final line in transaction.lines) {
-        final category = line.category;
-        if (category == null || category == readyToAssignCategory) continue;
-        state._add(
-          state._activity,
-          category,
-          CalendarMonth.of(transaction.date),
-          line.amount,
-        );
-      }
-    }
+    state._ledger = _Ledger(state);
     return state;
   }
 
@@ -240,7 +263,11 @@ final class BudgetState {
 
   /// Totals by Category id, then month.
   final _assigned = <String, Map<CalendarMonth, Money>>{};
-  final _activity = <String, Map<CalendarMonth, Money>>{};
+
+  /// Card Payment Category ids by card account id.
+  final _cardPayment = <String, String>{};
+
+  late final _Ledger _ledger;
 
   /// Null until the budget is created.
   Budget? get budget => _budget;
@@ -314,11 +341,11 @@ final class BudgetState {
   Money assigned(String categoryId, CalendarMonth month) =>
       _assigned[categoryId]?[month] ?? Money.zero;
 
-  /// The sum of [categoryId]'s transaction lines dated in [month]
-  /// (ticket 07). Every account is a non-card budget account for now; card
-  /// rules arrive with ticket 05.
+  /// The sum of [categoryId]'s transaction lines in budget accounts dated
+  /// in [month] (ticket 07). For a Card Payment Category it is the card
+  /// spending moved in, less refunds and payments.
   Money activity(String categoryId, CalendarMonth month) =>
-      _activity[categoryId]?[month] ?? Money.zero;
+      _ledger.at(categoryId, month)?.activity ?? Money.zero;
 
   /// Last month's Available when it was 0 or more. A negative Available
   /// doesn't carry; it is overspending (ticket 07).
@@ -329,7 +356,17 @@ final class BudgetState {
 
   /// Carry + Assigned + Activity (ticket 07).
   Money available(String categoryId, CalendarMonth month) =>
-      _availableByMonth(categoryId, month).lastOrNull?.$2 ?? Money.zero;
+      _ledger.at(categoryId, month)?.available ?? Money.zero;
+
+  /// The part of a negative Available caused by spending from cash
+  /// accounts. It comes out of next month's Ready to Assign.
+  Money cashOverspending(String categoryId, CalendarMonth month) =>
+      _ledger.at(categoryId, month)?.cashOverspent ?? Money.zero;
+
+  /// The part of a negative Available caused by card spending that wasn't
+  /// funded. It stays as unfunded card debt instead.
+  Money creditOverspending(String categoryId, CalendarMonth month) =>
+      _ledger.at(categoryId, month)?.creditOverspent ?? Money.zero;
 
   /// The single, global pool as it stands during [month] (ticket 07):
   /// income lines in budget accounts, less uncategorized outflows
@@ -339,9 +376,11 @@ final class BudgetState {
   Money readyToAssign(CalendarMonth month) {
     var total = Money.zero;
     for (final transaction in _transactions.values) {
+      if (_accounts[transaction.accountId]?.type.onBudget == false) continue;
+      final counts = !transaction.isTransfer && !transaction.startingBalance;
       for (final line in transaction.lines) {
         if (line.category == readyToAssignCategory ||
-            (line.category == null && line.amount.isNegative)) {
+            (counts && line.category == null && line.amount.isNegative)) {
           total += line.amount;
         }
       }
@@ -351,15 +390,7 @@ final class BudgetState {
         total -= amount;
       }
     }
-    for (final categoryId in {..._assigned.keys, ..._activity.keys}) {
-      for (final (_, balance) in _availableByMonth(
-        categoryId,
-        month.previous,
-      )) {
-        if (balance.isNegative) total += balance;
-      }
-    }
-    return total;
+    return total - _ledger.cashOverspentBefore(month);
   }
 
   /// Every month any Category has an Assignment in, in order.
@@ -368,31 +399,37 @@ final class BudgetState {
         ..sort();
 
   /// The last month in which [categoryId] has an Assignment or Activity.
-  CalendarMonth? lastActiveMonth(String categoryId) =>
-      _activeMonths(categoryId).lastOrNull;
-
-  /// The months with an Assignment or Activity for [categoryId], in order.
-  List<CalendarMonth> _activeMonths(String categoryId) => {
-    ...?_assigned[categoryId]?.keys,
-    ...?_activity[categoryId]?.keys,
-  }.toList()..sort();
-
-  /// Available for each month from [categoryId]'s first Assignment or
-  /// Activity through [last].
-  Iterable<(CalendarMonth, Money)> _availableByMonth(
-    String categoryId,
-    CalendarMonth last,
-  ) sync* {
-    final first = _activeMonths(categoryId).firstOrNull;
-    if (first == null) return;
-    var balance = Money.zero;
-    for (var month = first; month.compareTo(last) <= 0; month = month.next) {
-      final carry = balance.isNegative ? Money.zero : balance;
-      balance =
-          carry + assigned(categoryId, month) + activity(categoryId, month);
-      yield (month, balance);
-    }
+  CalendarMonth? lastActiveMonth(String categoryId) {
+    final assigned = _assigned[categoryId]?.keys.toList() ?? const [];
+    return [?_ledger.lastActive[categoryId], ...assigned].fold<CalendarMonth?>(
+      null,
+      (last, month) => last == null || month.compareTo(last) > 0 ? month : last,
+    );
   }
+
+  /// [accountId]'s Card Payment Category, or null when it isn't a card.
+  Category? cardPaymentCategory(String accountId) =>
+      _categories[_cardPayment[accountId]];
+
+  /// How much of a card's debt at the end of [month] its Card Payment
+  /// Category doesn't cover (ticket 07 examples 4 and 6). Zero for any
+  /// other account.
+  Money unfundedDebt(String accountId, CalendarMonth month) {
+    final payment = _cardPayment[accountId];
+    if (payment == null) return Money.zero;
+    final debt = -_sum(
+      accountId,
+      (t) => CalendarMonth.of(t.date).compareTo(month) <= 0,
+    );
+    final unfunded = debt - available(payment, month);
+    return unfunded.isPositive ? unfunded : Money.zero;
+  }
+
+  /// The sum of every account's balance, tracking accounts included.
+  Money get netWorth => _accounts.keys.fold(
+    Money.zero,
+    (total, accountId) => total + balance(accountId),
+  );
 
   void _add(
     Map<String, Map<CalendarMonth, Money>> totals,
@@ -430,6 +467,9 @@ final class BudgetState {
           ),
           amount: Money(p['amountCents'] as int),
           lines: _lines(p['lines'] as List),
+          transferAccountId: p['transferAccountId'] as String?,
+          transferTransactionId: p['transferTransactionId'] as String?,
+          startingBalance: p['startingBalance'] as bool? ?? false,
         );
       case EventType.transactionFieldsSet:
         final id = p['transactionId'] as String;
@@ -463,11 +503,14 @@ final class BudgetState {
         _groups[id] = CategoryGroup(id: id, name: p['name'] as String);
       case EventType.categoryCreated:
         final id = p['categoryId'] as String;
+        final card = p['cardAccountId'] as String?;
         _categories[id] = Category(
           id: id,
           groupId: p['categoryGroupId'] as String,
           name: p['name'] as String,
+          cardAccountId: card,
         );
+        if (card != null) _cardPayment[card] = id;
       case EventType.categoryArchived:
         final category = _categories[p['categoryId'] as String];
         if (category == null) return;
@@ -476,6 +519,7 @@ final class BudgetState {
           groupId: category.groupId,
           name: category.name,
           archived: true,
+          cardAccountId: category.cardAccountId,
         );
       case EventType.assignmentChanged:
         _add(

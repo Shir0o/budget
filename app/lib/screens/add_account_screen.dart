@@ -10,6 +10,8 @@ const _typeLabels = {
   AccountType.checking: 'Checking',
   AccountType.savings: 'Savings',
   AccountType.cash: 'Cash',
+  AccountType.creditCard: 'Credit card',
+  AccountType.tracking: 'Tracking',
 };
 
 /// Add account (canvas: AddAccount). On first run, [newBudgetName] is set
@@ -67,7 +69,8 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
       AddAccount(
         name: _name.text,
         type: _type,
-        startingBalance: balance,
+        // A card's balance is entered as the amount owed.
+        startingBalance: _type == AccountType.creditCard ? -balance : balance,
         asOf: _asOf,
       ),
     );
@@ -122,7 +125,9 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                           ],
                         ),
                         const Hint(
-                          'Budget account: money here can be assigned.',
+                          'Budget account: money here can be assigned. '
+                          'Tracking accounts (401k, mortgage) count toward '
+                          'net worth only.',
                         ),
                       ],
                     ),
@@ -150,7 +155,9 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                           children: [
                             Expanded(
                               child: LabeledField(
-                                label: 'Current balance',
+                                label: _type == AccountType.creditCard
+                                    ? 'Amount owed'
+                                    : 'Current balance',
                                 child: TextField(
                                   key: const ValueKey('account-balance'),
                                   controller: _balance,
@@ -180,9 +187,44 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                             ),
                           ],
                         ),
-                        const Hint(
-                          'Recorded as a Starting Balance transaction that '
-                          'goes to Ready to Assign.',
+                        if (_type.onBudget && _type != AccountType.creditCard)
+                          const Hint(
+                            'Recorded as a Starting Balance transaction that '
+                            'goes to Ready to Assign.',
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    decoration: BoxDecoration(
+                      color: Palette.summary,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 12,
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.only(top: 2),
+                          child: Icon(
+                            Icons.credit_card,
+                            size: 20,
+                            color: Palette.inkSoft,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            'A credit card gets its own Card Payment '
+                            'Category. An existing card balance starts as '
+                            'unfunded debt.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Palette.inkSoft,
+                              height: 1.45,
+                            ),
+                          ),
                         ),
                       ],
                     ),

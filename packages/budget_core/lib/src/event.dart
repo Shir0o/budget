@@ -70,7 +70,9 @@ abstract final class EventType {
   /// [readyToAssignCategory] for income and null while uncategorized, and
   /// `business` is `personal`, `business` (with `businessTag`) or null.
   /// Events written before ticket 03 lack memo, cleared and the line's
-  /// business, memo and reviewed.
+  /// business, memo and reviewed. One side of a transfer also has
+  /// `transferAccountId` and `transferTransactionId`, and a card or
+  /// tracking account's Starting Balance has `startingBalance: true`.
   static const transactionCreated = 'TransactionCreated';
 
   /// `{transactionId, fields: {payee?, date?, memo?, cleared?}}`. Each field
@@ -88,7 +90,8 @@ abstract final class EventType {
   /// `{categoryGroupId, name}`
   static const categoryGroupCreated = 'CategoryGroupCreated';
 
-  /// `{categoryId, categoryGroupId, name}`
+  /// `{categoryId, categoryGroupId, name, cardAccountId?}`. A Card Payment
+  /// Category has the card's `cardAccountId`.
   static const categoryCreated = 'CategoryCreated';
 
   /// `{categoryId}`

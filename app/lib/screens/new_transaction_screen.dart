@@ -6,7 +6,8 @@ import '../widgets.dart';
 import 'transaction_parts.dart';
 
 /// Enters a transaction by hand (canvas: AddTransaction). An inflow to
-/// Ready to Assign is income.
+/// Ready to Assign is income. Transfer moves money to another account
+/// (ticket 07).
 class NewTransactionScreen extends StatefulWidget {
   const NewTransactionScreen({super.key, required this.engine, this.accountId});
 
@@ -23,9 +24,24 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   final _amount = TextEditingController();
   final _payee = TextEditingController();
   final _memo = TextEditingController();
-  var _outflow = true;
+  var _kind = _Kind.outflow;
   var _date = today();
   late String? _accountId = widget.accountId ?? _state.accounts.firstOrNull?.id;
+
+  /// A transfer's other account.
+  String? _toAccountId;
+
+  /// A transfer moves money out of the chosen account.
+  bool get _outflow => _kind != _Kind.inflow;
+  bool get _transfer => _kind == _Kind.transfer;
+
+  /// Whether the transfer crosses between a budget and a tracking account,
+  /// so its budget side needs a Category (ticket 07).
+  bool get _transferNeedsCategory {
+    final from = _accountId == null ? null : _state.account(_accountId!);
+    final to = _toAccountId == null ? null : _state.account(_toAccountId!);
+    return from != null && to != null && from.type.onBudget != to.type.onBudget;
+  }
 
   /// Used until the transaction is split.
   String? _category;
@@ -38,6 +54,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   String? _payeeError;
   String? _memoError;
   String? _businessError;
+  String? _transferError;
 
   BudgetState get _state => widget.engine.state;
 
@@ -117,6 +134,37 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     if (edit?.line case final line?) setState(() => _lines!.add(line));
   }
 
+  void _saveTransfer(Money magnitude) {
+    final from = _accountId;
+    final to = _toAccountId;
+    if (from == null || to == null) {
+      setState(() => _transferError = 'Choose the account to transfer to');
+      return;
+    }
+    final result = widget.engine.execute(
+      CreateTransfer(
+        fromAccountId: from,
+        toAccountId: to,
+        amount: magnitude,
+        date: _date,
+        category: _transferNeedsCategory ? _category : null,
+        memo: _memo.text,
+      ),
+    );
+    if (result is Accepted) {
+      Navigator.of(context).pop();
+    } else if (result is Rejected) {
+      setState(
+        () => _transferError = switch (result.reason) {
+          Rejection.transferCategoryRequired =>
+            'Choose a Category: this money leaves the budget',
+          Rejection.sameAccount => 'Choose a different account',
+          _ => null,
+        },
+      );
+    }
+  }
+
   void _save() {
     final magnitude = _magnitude;
     final accountId = _accountId;
@@ -131,7 +179,10 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
           ? accountNumberMessage
           : null;
       _businessError =
-          _lines == null && _business is Business && !isSet(_business)
+          !_transfer &&
+              _lines == null &&
+              _business is Business &&
+              !isSet(_business)
           ? 'Choose a Business Tag'
           : null;
     });
@@ -143,6 +194,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         _businessError != null) {
       return;
     }
+    if (_transfer) return _saveTransfer(magnitude);
     final lines =
         _lines ??
         [
@@ -203,11 +255,18 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       spacing: 12,
                       children: [
-                        Segmented<bool>(
-                          options: const [(true, 'Outflow'), (false, 'Inflow')],
-                          selected: _outflow,
-                          onChanged: (outflow) =>
-                              setState(() => _outflow = outflow),
+                        Segmented<_Kind>(
+                          options: const [
+                            (_Kind.outflow, 'Outflow'),
+                            (_Kind.inflow, 'Inflow'),
+                            (_Kind.transfer, 'Transfer'),
+                          ],
+                          selected: _kind,
+                          onChanged: (kind) => setState(() {
+                            _kind = kind;
+                            _lines = null;
+                            _transferError = null;
+                          }),
                         ),
                         Semantics(
                           label: 'Amount',
@@ -262,21 +321,22 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _Row(
-                            label: 'Payee',
-                            first: true,
-                            child: TextField(
-                              key: const ValueKey('transaction-payee'),
-                              controller: _payee,
-                              textAlign: TextAlign.end,
-                              textCapitalization: TextCapitalization.words,
-                              style: const TextStyle(fontSize: 15),
-                              decoration: _bare(
-                                hint: 'Who was paid',
-                                error: _payeeError,
+                          if (!_transfer)
+                            _Row(
+                              label: 'Payee',
+                              first: true,
+                              child: TextField(
+                                key: const ValueKey('transaction-payee'),
+                                controller: _payee,
+                                textAlign: TextAlign.end,
+                                textCapitalization: TextCapitalization.words,
+                                style: const TextStyle(fontSize: 15),
+                                decoration: _bare(
+                                  hint: 'Who was paid',
+                                  error: _payeeError,
+                                ),
                               ),
                             ),
-                          ),
                           _Row(
                             label: 'Date',
                             onTap: () async {
@@ -292,7 +352,8 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                             ),
                           ),
                           _Row(
-                            label: 'Account',
+                            label: _transfer ? 'From' : 'Account',
+                            first: _transfer,
                             child: Align(
                               alignment: Alignment.centerRight,
                               child: PopupMenuButton<String>(
@@ -310,7 +371,63 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                               ),
                             ),
                           ),
-                          if (lines == null) ...[
+                          if (_transfer) ...[
+                            _Row(
+                              label: 'To',
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: PopupMenuButton<String>(
+                                  tooltip: 'Choose account to transfer to',
+                                  onSelected: (id) =>
+                                      setState(() => _toAccountId = id),
+                                  itemBuilder: (_) => [
+                                    for (final a in state.accounts)
+                                      if (a.id != _accountId)
+                                        PopupMenuItem(
+                                          value: a.id,
+                                          child: Text(a.name),
+                                        ),
+                                  ],
+                                  child: _Choice(
+                                    _toAccountId == null
+                                        ? 'Choose'
+                                        : state.account(_toAccountId!)?.name ??
+                                              'Choose',
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (_transferNeedsCategory)
+                              _Row(
+                                label: 'Category',
+                                onTap: _pickCategory,
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: _Choice(
+                                    _category == null
+                                        ? 'Choose'
+                                        : categoryName(state, _category),
+                                  ),
+                                ),
+                              ),
+                            if (_transferError case final error?)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  12,
+                                ),
+                                child: Text(
+                                  error,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Palette.problemText,
+                                  ),
+                                ),
+                              ),
+                          ],
+                          if (lines == null && !_transfer) ...[
                             _Row(
                               label: 'Category',
                               onTap: _pickCategory,
@@ -395,20 +512,21 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(child: Hint(_reviewHint)),
-                      if (lines == null)
-                        TextButton(
-                          onPressed: _split,
-                          style: TextButton.styleFrom(
-                            minimumSize: const Size(44, 44),
-                            foregroundColor: Palette.teal,
+                  if (!_transfer)
+                    Row(
+                      children: [
+                        Expanded(child: Hint(_reviewHint)),
+                        if (lines == null)
+                          TextButton(
+                            onPressed: _split,
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(44, 44),
+                              foregroundColor: Palette.teal,
+                            ),
+                            child: const Text('Split'),
                           ),
-                          child: const Text('Split'),
-                        ),
-                    ],
-                  ),
+                      ],
+                    ),
                 ],
               ),
             ),
@@ -418,6 +536,8 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     );
   }
 }
+
+enum _Kind { outflow, inflow, transfer }
 
 /// A borderless field for a row.
 InputDecoration _bare({required String hint, String? error}) => InputDecoration(

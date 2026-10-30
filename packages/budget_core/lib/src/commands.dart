@@ -17,8 +17,11 @@ final class CreateBudget extends Command {
   final String name;
 }
 
-/// Adds a budget account. Its [startingBalance] is recorded as a
-/// "Starting Balance" transaction that goes to Ready to Assign.
+/// Adds an account. Its [startingBalance] is recorded as a "Starting
+/// Balance" transaction. In a cash account it goes to Ready to Assign; in a
+/// card or tracking account it doesn't touch the budget, so an existing
+/// card balance starts as unfunded debt (ticket 07 example 6). A credit
+/// card also gets its Card Payment Category.
 final class AddAccount extends Command {
   const AddAccount({
     required this.name,
@@ -128,6 +131,33 @@ final class DeleteTransaction extends Command {
   final String transactionId;
 }
 
+/// Moves [amount] from one account to another as a pair of linked
+/// transactions (ticket 07). Between two budget accounts, or two tracking
+/// accounts, it has no [category]. From a budget account to a tracking
+/// account it needs a Category, because the money leaves the budget; the
+/// other way it needs Ready to Assign or a Category. Paying a card from
+/// checking spends the card's Card Payment Category. Transfer lines skip
+/// business status (ticket 09).
+final class CreateTransfer extends Command {
+  const CreateTransfer({
+    required this.fromAccountId,
+    required this.toAccountId,
+    required this.amount,
+    required this.date,
+    this.category,
+    this.memo = '',
+  });
+
+  final String fromAccountId;
+  final String toAccountId;
+
+  /// Positive.
+  final Money amount;
+  final CivilDate date;
+  final String? category;
+  final String memo;
+}
+
 /// Adds a category group, such as Bills or Everyday.
 final class CreateCategoryGroup extends Command {
   const CreateCategoryGroup({required this.name});
@@ -213,7 +243,7 @@ enum Rejection {
   /// [SetAssignment] to the amount already assigned.
   noChange,
 
-  /// [MoveMoney] of zero or less.
+  /// [MoveMoney] or [CreateTransfer] of zero or less.
   amountMustBePositive,
 
   /// [MoveMoney] from a Category to itself.
@@ -240,6 +270,21 @@ enum Rejection {
   /// A payee or memo that looks like a card or account number
   /// (`containsSensitiveNumber`). "Don't store account numbers here."
   accountNumberNotAllowed,
+
+  /// [CreateTransfer] from an account to itself.
+  sameAccount,
+
+  /// A transfer between a budget and a tracking account without a
+  /// Category on the budget side (Ready to Assign is allowed only coming
+  /// in).
+  transferCategoryRequired,
+
+  /// A Category on a transfer between two budget accounts, or two tracking
+  /// accounts.
+  transferHasNoCategory,
+
+  /// Splitting a transfer into several lines.
+  transferCannotSplit,
 }
 
 /// What a command produced.

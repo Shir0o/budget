@@ -203,7 +203,13 @@ class _TransactionScreenState extends State<TransactionScreen> {
                                     spacing: 2,
                                     children: [
                                       Text(
-                                        _payee.isEmpty ? 'No payee' : _payee,
+                                        _saved.isTransfer
+                                            ? 'Transfer '
+                                                  '${_outflow ? 'to' : 'from'} '
+                                                  '${state.account(_saved.transferAccountId!)?.name}'
+                                            : _payee.isEmpty
+                                            ? 'No payee'
+                                            : _payee,
                                         style: const TextStyle(
                                           fontSize: 18,
                                           fontWeight: FontWeight.w600,
@@ -287,15 +293,19 @@ class _TransactionScreenState extends State<TransactionScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  SplitLinesCard(
-                    state: state,
-                    lines: _lines,
-                    left: _left,
-                    outflow: _outflow,
-                    onEdit: _editLine,
-                    onAdd: _addLine,
-                  ),
+                  // A transfer between budget accounts has no Category.
+                  if (!_saved.isTransfer ||
+                      _saved.lines.single.category != null) ...[
+                    const SizedBox(height: 12),
+                    SplitLinesCard(
+                      state: state,
+                      lines: _lines,
+                      left: _left,
+                      outflow: _outflow,
+                      onEdit: _editLine,
+                      onAdd: _addLine,
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   CardBox(
                     padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
