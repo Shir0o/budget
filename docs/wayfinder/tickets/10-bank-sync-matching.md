@@ -28,6 +28,9 @@ How does SimpleFIN bank sync connect, when does it fetch, and how are incoming b
 
 1. **Same SimpleFIN id already imported:** update it in place (amount, date, description, pending).
    - If the line was already **Reviewed** and the amount changed, it goes back to **Unreviewed** with the note "changed by bank: $X → $Y".
+   - Only the bank's fields change. The memo, categories, business status and Review stay the person's, and a cleared line never goes back to pending.
+   - On a split, the person's lines stay and the difference goes in a new **Unreviewed**, uncategorized line with that note, so the lines still sum to the amount.
+   - A **Reconciled** transaction is never edited by a fetch (ticket 09: edits need a confirmation). If the bank's amount changed, its lines go back to **Unreviewed** with the note "bank shows $Y, Reconciled at $X" until the person edits it.
 2. **A pending charge posted under a new id:** there is a still-pending imported transaction in the same account, posted date within 7 days of it, the same normalized description (or a payee similarity ≥ 0.8), and an amount within +25% or −10% (tips, fuel holds).
    - Replace it in place, keeping the user's category, business status, and memo.
    - If the amount changed, send it back to Review.
