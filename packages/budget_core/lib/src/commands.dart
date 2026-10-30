@@ -1,6 +1,7 @@
 import 'budget_state.dart';
 import 'civil_date.dart';
 import 'event.dart';
+import 'history.dart';
 import 'money.dart';
 
 /// A request to change the budget. Commands are validated against the
@@ -214,6 +215,24 @@ final class ArchiveCategory extends Command {
   final CalendarMonth month;
 }
 
+/// Reverts an Event group by appending compensating Events with actor
+/// `revert` in a new group (ticket 11). Nothing is erased, and reverting a
+/// revert redoes it. Run [ChangeHistory.planRevert] first: a field set again
+/// later is reverted anyway unless it is in [skipFields], and later groups
+/// that depend on what this one created are reverted too only with
+/// [includeDependents].
+final class RevertGroup extends Command {
+  const RevertGroup({
+    required this.groupId,
+    this.skipFields = const {},
+    this.includeDependents = false,
+  });
+
+  final String groupId;
+  final Set<FieldRef> skipFields;
+  final bool includeDependents;
+}
+
 /// Why a command was refused.
 enum Rejection {
   /// [CreateBudget] when the log already holds a budget.
@@ -240,7 +259,8 @@ enum Rejection {
   /// Assigning to, moving money with, or archiving an archived Category.
   categoryArchived,
 
-  /// [SetAssignment] to the amount already assigned.
+  /// [SetAssignment] to the amount already assigned, or a [RevertGroup]
+  /// that skips every field.
   noChange,
 
   /// [MoveMoney] or [CreateTransfer] of zero or less.
@@ -285,6 +305,21 @@ enum Rejection {
 
   /// Splitting a transfer into several lines.
   transferCannotSplit,
+
+  /// [RevertGroup] of a group that isn't in the log.
+  unknownGroup,
+
+  /// [RevertGroup] of a group a revert is already undoing. Revert that
+  /// revert to redo it instead.
+  alreadyReverted,
+
+  /// [RevertGroup] of something with no undo, such as creating the budget
+  /// or an Event type this version doesn't know.
+  cannotRevert,
+
+  /// [RevertGroup] without [RevertGroup.includeDependents] when later
+  /// changes depend on what the group created.
+  hasDependents,
 }
 
 /// What a command produced.

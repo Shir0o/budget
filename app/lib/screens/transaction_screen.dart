@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../widgets.dart';
+import 'history_screen.dart';
 import 'transaction_parts.dart';
 
 /// One transaction (canvas: Transaction): payee, date, account, amount and
-/// cleared status, its lines with Left to split, and the memo. Who made
-/// each change arrives with Change History (ticket 07).
+/// cleared status, its lines with Left to split, the memo, and who created
+/// and last changed it, with a link to its Change History.
 class TransactionScreen extends StatefulWidget {
   const TransactionScreen({
     super.key,
@@ -150,10 +151,32 @@ class _TransactionScreenState extends State<TransactionScreen> {
     if (result is Accepted && mounted) Navigator.of(context).pop();
   }
 
+  Future<void> _openHistory() async {
+    final before = widget.engine.events.length;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => EntityHistoryScreen(
+          engine: widget.engine,
+          entity: EntityRef.transaction(widget.transactionId),
+          name: _saved.payee.isEmpty ? 'No payee' : _saved.payee,
+        ),
+      ),
+    );
+    // A revert changed it, so these unsaved values are out of date.
+    if (mounted && widget.engine.events.length != before) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = _state;
     final cleared = _cleared != ClearedStatus.uncleared;
+    final changes = widget.engine.history.entries(
+      filter: HistoryFilter(
+        entity: EntityRef.transaction(widget.transactionId),
+      ),
+    );
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -327,6 +350,40 @@ class _TransactionScreenState extends State<TransactionScreen> {
                           ),
                         ),
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 4,
+                      children: [
+                        if (changes.lastOrNull case final created?)
+                          Hint(
+                            'Created by ${actorPhrase(created)} · '
+                            '${historyTime(created.time)}',
+                          ),
+                        if (changes.length > 1)
+                          Hint(
+                            'Last changed by ${actorPhrase(changes.first)} · '
+                            '${historyTime(changes.first.time)}',
+                          ),
+                        TextButton(
+                          onPressed: _openHistory,
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 44),
+                            padding: EdgeInsets.zero,
+                            foregroundColor: Palette.teal,
+                            textStyle: const TextStyle(
+                              fontFamily: sansFamily,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          child: const Text('See Change History'),
+                        ),
+                      ],
                     ),
                   ),
                 ],

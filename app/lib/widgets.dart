@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'screens/accounts_screen.dart';
 import 'screens/budget_screen.dart';
+import 'screens/history_screen.dart';
 import 'theme.dart';
 
 const _months = [
@@ -21,6 +22,13 @@ const _monthNames = [
 
 /// `Nov 14`
 String formatDay(CivilDate date) => '${_months[date.month - 1]} ${date.day}';
+
+/// `4:12 PM`
+String formatTime(DateTime time) {
+  final hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
+  final minute = time.minute.toString().padLeft(2, '0');
+  return '$hour:$minute ${time.hour < 12 ? 'AM' : 'PM'}';
+}
 
 /// `Nov 2026`
 String formatMonth(CalendarMonth month) =>
@@ -65,9 +73,8 @@ class AvailablePill extends StatelessWidget {
   }
 }
 
-/// The bottom navigation's tabs. Review and History are added when their
-/// screens arrive.
-enum MainTab { budget, accounts }
+/// The bottom navigation's tabs. Review is added when its screen arrives.
+enum MainTab { budget, accounts, history }
 
 /// The bottom navigation. Tapping a tab replaces the current screen.
 class MainNav extends StatelessWidget {
@@ -79,11 +86,13 @@ class MainNav extends StatelessWidget {
   static const _tabs = [
     (MainTab.budget, 'Budget', Icons.table_chart_outlined),
     (MainTab.accounts, 'Accounts', Icons.account_balance_outlined),
+    (MainTab.history, 'History', Icons.schedule),
   ];
 
   Widget _screen(MainTab tab) => switch (tab) {
     MainTab.budget => BudgetScreen(engine: engine),
     MainTab.accounts => AccountsScreen(engine: engine),
+    MainTab.history => HistoryScreen(engine: engine),
   };
 
   @override
@@ -257,7 +266,6 @@ class SelectChip extends StatelessWidget {
           child: Container(
             constraints: const BoxConstraints(minHeight: 36),
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            alignment: Alignment.center,
             decoration: BoxDecoration(
               color: selected ? Palette.ink : Palette.card,
               border: Border.all(
@@ -265,12 +273,17 @@ class SelectChip extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(999),
             ),
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
-                color: selected ? Palette.background : Palette.ink,
+            // Sized to the label, so a chip in a Wrap doesn't fill the row.
+            child: Align(
+              widthFactor: 1,
+              heightFactor: 1,
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
+                  color: selected ? Palette.background : Palette.ink,
+                ),
               ),
             ),
           ),

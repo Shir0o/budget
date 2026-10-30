@@ -261,6 +261,12 @@ final class BudgetState {
   final _groups = <String, CategoryGroup>{};
   final _categories = <String, Category>{};
 
+  /// Deleted entities, kept so a revert can restore them (ticket 11).
+  final _removedTransactions = <String, Transaction>{};
+  final _removedAccounts = <String, Account>{};
+  final _removedGroups = <String, CategoryGroup>{};
+  final _removedCategories = <String, Category>{};
+
   /// Totals by Category id, then month.
   final _assigned = <String, Map<CalendarMonth, Money>>{};
 
@@ -497,7 +503,24 @@ final class BudgetState {
       case EventType.transactionDeleted:
         final id = p['transactionId'] as String;
         _deleted.add(id);
-        _transactions.remove(id);
+        _move(_transactions, _removedTransactions, id);
+      case EventType.transactionRestored:
+        final id = p['transactionId'] as String;
+        if (!_removedTransactions.containsKey(id)) return;
+        _deleted.remove(id);
+        _move(_removedTransactions, _transactions, id);
+      case EventType.accountDeleted:
+        _move(_accounts, _removedAccounts, p['accountId'] as String);
+      case EventType.accountRestored:
+        _move(_removedAccounts, _accounts, p['accountId'] as String);
+      case EventType.categoryGroupDeleted:
+        _move(_groups, _removedGroups, p['categoryGroupId'] as String);
+      case EventType.categoryGroupRestored:
+        _move(_removedGroups, _groups, p['categoryGroupId'] as String);
+      case EventType.categoryDeleted:
+        _move(_categories, _removedCategories, p['categoryId'] as String);
+      case EventType.categoryRestored:
+        _move(_removedCategories, _categories, p['categoryId'] as String);
       case EventType.categoryGroupCreated:
         final id = p['categoryGroupId'] as String;
         _groups[id] = CategoryGroup(id: id, name: p['name'] as String);
@@ -511,14 +534,14 @@ final class BudgetState {
           cardAccountId: card,
         );
         if (card != null) _cardPayment[card] = id;
-      case EventType.categoryArchived:
+      case EventType.categoryArchived || EventType.categoryUnarchived:
         final category = _categories[p['categoryId'] as String];
         if (category == null) return;
         _categories[category.id] = Category(
           id: category.id,
           groupId: category.groupId,
           name: category.name,
-          archived: true,
+          archived: event.type == EventType.categoryArchived,
           cardAccountId: category.cardAccountId,
         );
       case EventType.assignmentChanged:
@@ -529,6 +552,11 @@ final class BudgetState {
           Money(p['deltaCents'] as int),
         );
     }
+  }
+
+  static void _move<T>(Map<String, T> from, Map<String, T> to, String id) {
+    final value = from.remove(id);
+    if (value != null) to[id] = value;
   }
 
   static List<TransactionLine> _lines(List<Object?> lines) => [

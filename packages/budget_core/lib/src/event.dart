@@ -100,6 +100,39 @@ abstract final class EventType {
   /// `{category, month, deltaCents}`, where `month` is `YYYY-MM`. A delta,
   /// so concurrent Assignments from two devices add up (ticket 06).
   static const assignmentChanged = 'AssignmentChanged';
+
+  // Lifecycle Events that reverts emit (ticket 11). Restoring brings an
+  // entity back as it was when it was deleted.
+
+  /// `{transactionId}`
+  static const transactionRestored = 'TransactionRestored';
+
+  /// `{accountId}`
+  static const accountDeleted = 'AccountDeleted';
+
+  /// `{accountId}`
+  static const accountRestored = 'AccountRestored';
+
+  /// `{categoryGroupId}`
+  static const categoryGroupDeleted = 'CategoryGroupDeleted';
+
+  /// `{categoryGroupId}`
+  static const categoryGroupRestored = 'CategoryGroupRestored';
+
+  /// `{categoryId}`
+  static const categoryUnarchived = 'CategoryUnarchived';
+
+  /// `{categoryId}`
+  static const categoryDeleted = 'CategoryDeleted';
+
+  /// `{categoryId}`
+  static const categoryRestored = 'CategoryRestored';
+
+  /// `{groupIds, by}`: the first Event of a revert group. `groupIds` are the
+  /// groups it reverts, the one chosen first, then any later ones that
+  /// depended on it. `by` is the Actor who asked for the revert. It changes
+  /// no state.
+  static const groupReverted = 'GroupReverted';
 }
 
 /// The `category` value of a transaction line whose money goes to
