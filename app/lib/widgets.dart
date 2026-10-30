@@ -1,6 +1,8 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import 'screens/accounts_screen.dart';
+import 'screens/budget_screen.dart';
 import 'theme.dart';
 
 const _months = [
@@ -63,10 +65,26 @@ class AvailablePill extends StatelessWidget {
   }
 }
 
-/// The bottom navigation. Tabs are added as their screens arrive; for now
-/// only Budget exists.
+/// The bottom navigation's tabs. Review and History are added when their
+/// screens arrive.
+enum MainTab { budget, accounts }
+
+/// The bottom navigation. Tapping a tab replaces the current screen.
 class MainNav extends StatelessWidget {
-  const MainNav({super.key});
+  const MainNav({super.key, required this.engine, required this.current});
+
+  final BudgetEngine engine;
+  final MainTab current;
+
+  static const _tabs = [
+    (MainTab.budget, 'Budget', Icons.table_chart_outlined),
+    (MainTab.accounts, 'Accounts', Icons.account_balance_outlined),
+  ];
+
+  Widget _screen(MainTab tab) => switch (tab) {
+    MainTab.budget => BudgetScreen(engine: engine),
+    MainTab.accounts => AccountsScreen(engine: engine),
+  };
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
@@ -82,26 +100,42 @@ class MainNav extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(
             children: [
-              Expanded(
-                child: Semantics(
-                  selected: true,
-                  button: true,
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    spacing: 4,
-                    children: [
-                      _NavPill(icon: Icons.table_chart_outlined),
-                      Text(
-                        'Budget',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
+              for (final (tab, label, icon) in _tabs)
+                Expanded(
+                  child: Semantics(
+                    selected: tab == current,
+                    button: true,
+                    child: InkWell(
+                      onTap: tab == current
+                          ? null
+                          : () => Navigator.of(context).pushReplacement(
+                              PageRouteBuilder<void>(
+                                pageBuilder: (_, _, _) => _screen(tab),
+                                transitionDuration: Duration.zero,
+                              ),
+                            ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        spacing: 4,
+                        children: [
+                          _NavPill(icon: icon, selected: tab == current),
+                          Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: tab == current
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: tab == current
+                                  ? Palette.ink
+                                  : Palette.muted,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -111,19 +145,24 @@ class MainNav extends StatelessWidget {
 }
 
 class _NavPill extends StatelessWidget {
-  const _NavPill({required this.icon});
+  const _NavPill({required this.icon, required this.selected});
 
   final IconData icon;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) => Container(
     width: 56,
     height: 30,
     decoration: BoxDecoration(
-      color: Palette.positivePill,
+      color: selected ? Palette.positivePill : null,
       borderRadius: BorderRadius.circular(999),
     ),
-    child: Icon(icon, size: 22, color: Palette.positiveText),
+    child: Icon(
+      icon,
+      size: 22,
+      color: selected ? Palette.positiveText : Palette.muted,
+    ),
   );
 }
 

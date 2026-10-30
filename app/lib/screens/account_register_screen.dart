@@ -187,6 +187,8 @@ class _RegisterRow extends StatelessWidget {
     final unreviewed = t.lines.any((line) => !line.reviewed);
     final what = unreviewed
         ? 'Unreviewed'
+        : t.isTransfer && t.lines.single.category == null
+        ? 'Transfer'
         : t.isSplit
         ? 'Split · ${t.lines.length}'
         : categoryName(state, t.lines.single.category);
@@ -208,7 +210,12 @@ class _RegisterRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    t.payee.isEmpty ? 'No payee' : t.payee,
+                    t.isTransfer
+                        ? 'Transfer ${t.amount.isNegative ? 'to' : 'from'} '
+                              '${state.account(t.transferAccountId!)?.name}'
+                        : t.payee.isEmpty
+                        ? 'No payee'
+                        : t.payee,
                     style: const TextStyle(fontSize: 15),
                   ),
                   Text(
