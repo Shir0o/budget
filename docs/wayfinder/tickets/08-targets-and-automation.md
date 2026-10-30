@@ -17,9 +17,11 @@ How does each Target compute what a category needs, when and how does automation
 | **Repeating** | amount A, every N days/weeks/months/years, next due date D | Monthly or longer interval: (A − Available-before-assigning) ÷ months from m to D's month, inclusive. Floor at 0, and round up to the cent on the last month so the target lands exactly. Weekly or daily: A × the number of due dates in m. |
 | **One-time by date** | amount A, date D | (A − Available-before-assigning) ÷ months left including m. After D: complete. If spending then drops Available below A, the target stays complete and does not refill. |
 | **Keep at least** | amount A | max(0, A − Available-before-assigning) |
-| **Driven by schedule** | none; uses the category's scheduled transactions | The sum, over each scheduled outflow in the category, of its implied Repeating target (its amount, recurrence, and next date) |
+| **Driven by schedule** | none; uses the category's scheduled transactions | The sum, over each scheduled outflow in the category, of its implied Repeating target (its amount, recurrence, and next date). The category's Carry counts once across them: it goes to the monthly-or-longer schedule due last first, up to its amount, then to the next. Weekly or daily schedules ignore it. |
 
-- **Available-before-assigning** = Carry(c, m) + Activity(c, m).
+- **Available-before-assigning** follows YNAB and depends on the kind:
+  - **Repeating, Keep at least, and Driven by schedule** are for spending (YNAB's "Needed for spending" and "Refill up to"): Carry(c, m) alone. This month's Activity doesn't count, so paying the bill doesn't make the category look underfunded again. Example: Groceries $500 monthly, nothing carried, $500 assigned, $300 spent: Underfunded $0.
+  - **One-time by date** is a balance to reach (YNAB's "Have a balance of X by date"): Carry(c, m) + Activity(c, m).
 - **Underfunded(c, m)** = max(0, Needed − Assigned(c, m)).
 
 **Example.** Car insurance: $600 every 6 months, next due in April. In November the category has $0. Needed = 600 ÷ 6 (Nov–Apr) = **$100/month**. In February, if the category holds $250, Needed = 350 ÷ 3 = **$116.67** (April rounds up so the total lands at $600).

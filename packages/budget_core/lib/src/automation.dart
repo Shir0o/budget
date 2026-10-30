@@ -52,10 +52,18 @@ extension AutomationQueries on BudgetState {
     return [...ranked, ...active.where((c) => !ranked.contains(c))];
   }
 
-  /// Carry + Activity: what [categoryId] holds in [month] before any
-  /// Assignment.
-  Money availableBeforeAssigning(String categoryId, CalendarMonth month) =>
-      carry(categoryId, month) + activity(categoryId, month);
+  /// What [target] counts [categoryId] as holding in [month] before any
+  /// Assignment, as YNAB does. A By-date Target is a balance to reach, so
+  /// this month's spending counts: Carry + Activity. Every other kind is
+  /// for spending, so it counts the Carry alone, and paying the bill this
+  /// month doesn't make the Category look underfunded again.
+  Money availableBeforeAssigning(
+    String categoryId,
+    CalendarMonth month,
+    Target target,
+  ) => target is ByDateTarget
+      ? carry(categoryId, month) + activity(categoryId, month)
+      : carry(categoryId, month);
 
   /// What [categoryId]'s Target needs in [month]. Zero without a Target. A
   /// Driven-by-schedule Target sums the Category's Scheduled Transactions

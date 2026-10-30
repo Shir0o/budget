@@ -99,7 +99,10 @@ void main() {
       final budget = _Budget();
       final car = budget.category('Car insurance', target: carInsurance);
 
-      expect(budget.state.availableBeforeAssigning(car, _nov), Money.zero);
+      expect(
+        budget.state.availableBeforeAssigning(car, _nov, carInsurance),
+        Money.zero,
+      );
       expect(budget.state.needed(car, _nov), const Money(10000));
     });
 
@@ -135,19 +138,20 @@ void main() {
       expect(budget.state.needed(car, _nov), Money.zero);
     });
 
-    test('counts spending this month as Activity', () {
+    test('ignores spending this month, so a paid bill stays funded', () {
       final budget = _Budget();
-      final electric = budget.category(
-        'Electric',
-        target: _monthly(9000, CivilDate(2026, 11, 20)),
-      );
-      budget.spend(electric, CivilDate(2026, 11, 3), 2000);
+      final monthly = _monthly(50000, CivilDate(2026, 11, 30));
+      final groceries = budget.category('Groceries', target: monthly);
+      budget.assign(groceries, _nov, 50000);
+      budget.spend(groceries, CivilDate(2026, 11, 3), 30000);
 
+      // Carry alone, as YNAB's Needed for spending does.
       expect(
-        budget.state.availableBeforeAssigning(electric, _nov),
-        const Money(-2000),
+        budget.state.availableBeforeAssigning(groceries, _nov, monthly),
+        Money.zero,
       );
-      expect(budget.state.needed(electric, _nov), const Money(11000));
+      expect(budget.state.needed(groceries, _nov), const Money(50000));
+      expect(budget.state.underfunded(groceries, _nov), Money.zero);
     });
 
     test('weekly needs the amount times the due dates in the month', () {
@@ -207,20 +211,32 @@ void main() {
       expect(trip.isCompleteIn(_mar), isTrue);
       expect(budget.state.needed(travel, _mar), Money.zero);
     });
+
+    test('counts spending this month, since it is a balance to reach', () {
+      final budget = _Budget();
+      final travel = budget.category('Travel', target: trip);
+      budget.spend(travel, CivilDate(2026, 11, 3), 10000);
+
+      expect(
+        budget.state.availableBeforeAssigning(travel, _nov, trip),
+        const Money(-10000),
+      );
+      // (1,200 + 100) ÷ 4.
+      expect(budget.state.needed(travel, _nov), const Money(32500));
+    });
   });
 
   group('Keep at least Target', () {
-    test('tops up to the floor: max(0, A − Available before assigning)', () {
+    test('tops up to the floor from the carry, ignoring spending this '
+        'month: max(0, A − Carry)', () {
       final budget = _Budget();
-      final transport = budget.category(
-        'Transport',
-        target: const KeepAtLeastTarget(amount: Money(10000)),
-      );
-      budget.assign(transport, _oct, 5000);
-      budget.spend(transport, CivilDate(2026, 11, 4), 2760);
+      const floor = KeepAtLeastTarget(amount: Money(10000));
+      final transport = budget.category('Transport', target: floor);
+      budget.assign(transport, _oct, 2240);
+      budget.spend(transport, CivilDate(2026, 11, 4), 1000);
 
       expect(
-        budget.state.availableBeforeAssigning(transport, _nov),
+        budget.state.availableBeforeAssigning(transport, _nov, floor),
         const Money(2240),
       );
       expect(budget.state.needed(transport, _nov), const Money(7760));

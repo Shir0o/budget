@@ -79,6 +79,10 @@ final class _Budget {
           ).single.payload['scheduleId']
           as String;
 
+  void assign(String categoryId, CalendarMonth month, int cents) => run(
+    SetAssignment(categoryId: categoryId, month: month, amount: Money(cents)),
+  );
+
   void spend(
     String categoryId,
     CivilDate date,
@@ -334,6 +338,67 @@ void main() {
       expect(budget.state.needed(car, _nov), const Money(15000));
 
       // In December the car insurance has 5 months left: 600 ÷ 5 + 50.
+      expect(budget.state.needed(car, _dec), const Money(17000));
+    });
+
+    test('counts the carry once across its schedules', () {
+      final budget = _Budget();
+      final car = budget.category('Car insurance');
+      budget.schedule(
+        payee: 'Gecko',
+        amount: const Money(-60000),
+        categoryId: car,
+        every: 6,
+        nextDue: CivilDate(2027, 4, 1),
+      );
+      budget.schedule(
+        payee: 'Roadside',
+        amount: const Money(-5000),
+        categoryId: car,
+        nextDue: CivilDate(2026, 11, 20),
+      );
+      budget.run(
+        SetTarget(categoryId: car, target: const DrivenByScheduleTarget()),
+      );
+      budget.assign(car, _nov, 15000);
+      budget.spend(car, CivilDate(2026, 11, 20), 5000);
+
+      // December carries $100, saved toward the insurance: (600 − 100) ÷ 5,
+      // plus Roadside's 50.
+      expect(budget.state.carry(car, _dec), const Money(10000));
+      expect(budget.state.needed(car, _dec), const Money(15000));
+
+      // Paying Roadside in December doesn't reopen it.
+      budget.spend(car, CivilDate(2026, 12, 20), 5000);
+      expect(budget.state.needed(car, _dec), const Money(15000));
+    });
+
+    test('a negative balance adds nothing to what its schedules need', () {
+      final budget = _Budget();
+      final car = budget.category('Car insurance');
+      budget.schedule(
+        payee: 'Gecko',
+        amount: const Money(-60000),
+        categoryId: car,
+        every: 6,
+        nextDue: CivilDate(2027, 4, 1),
+      );
+      budget.schedule(
+        payee: 'Roadside',
+        amount: const Money(-5000),
+        categoryId: car,
+        nextDue: CivilDate(2026, 11, 20),
+      );
+      budget.run(
+        SetTarget(categoryId: car, target: const DrivenByScheduleTarget()),
+      );
+      // November is overspent by $50, so December carries nothing.
+      budget.assign(car, _nov, 15000);
+      budget.spend(car, CivilDate(2026, 11, 20), 20000);
+      budget.spend(car, CivilDate(2026, 12, 2), 5000);
+
+      expect(budget.state.available(car, _dec), const Money(-5000));
+      // 600 ÷ 5 + 50, as with nothing in the Category.
       expect(budget.state.needed(car, _dec), const Money(17000));
     });
 
