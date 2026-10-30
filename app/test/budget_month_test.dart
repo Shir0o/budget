@@ -224,8 +224,9 @@ void main() {
     await _tap(tester, find.byTooltip('Category options'));
     await _tap(tester, find.text('Archive category'));
 
-    expect(find.text('Dining out'), findsNothing);
-    expect(find.text('Groceries'), findsOneWidget);
+    expect(find.text('Dining out', skipOffstage: false), findsNothing);
+    // Scrolled out of view by the tap on Dining out, but still listed.
+    expect(find.text('Groceries', skipOffstage: false), findsOneWidget);
     expect(seed.state.category(seed.dining)?.archived, isTrue);
   });
 }
