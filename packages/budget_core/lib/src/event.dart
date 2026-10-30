@@ -105,6 +105,10 @@ abstract final class EventType {
   /// Category has the card's `cardAccountId`.
   static const categoryCreated = 'CategoryCreated';
 
+  /// `{categoryId, name}`. A Category's new name; everything else about it
+  /// stays.
+  static const categoryRenamed = 'CategoryRenamed';
+
   /// `{categoryId}`
   static const categoryArchived = 'CategoryArchived';
 

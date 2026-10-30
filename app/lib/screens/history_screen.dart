@@ -8,10 +8,12 @@ import 'revert_conflict_sheet.dart';
 
 /// Change History (canvas: History): every change, newest first and
 /// grouped by day, with Actor filter chips and Go back to a date.
+/// [actor] picks the chip it opens on, such as MCP from Settings → AI apps.
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key, required this.engine});
+  const HistoryScreen({super.key, required this.engine, this.actor});
 
   final BudgetEngine engine;
+  final ActorKind? actor;
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -27,6 +29,12 @@ const _actorChips = [
 
 class _HistoryScreenState extends State<HistoryScreen> {
   ActorKind? _actor;
+
+  @override
+  void initState() {
+    super.initState();
+    _actor = widget.actor;
+  }
 
   Future<void> _goBack() async {
     final now = today();

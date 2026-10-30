@@ -4,7 +4,8 @@ library;
 
 import 'dart:io';
 
-import 'package:budget_core/budget_core.dart' show Event;
+import 'package:budget_core/budget_core.dart'
+    show Actor, BudgetEngine, Command, CommandResult, Event;
 import 'package:budget_store/budget_store.dart';
 
 import 'src/budgets.dart';
@@ -73,6 +74,52 @@ final class AppEventSource implements EventSource {
     );
     try {
       return log.readAll();
+    } finally {
+      log.close();
+    }
+  }
+}
+
+/// Runs a write tool's Command through a [BudgetEngine] over the budget's
+/// SQLCipher store, with actor `mcp:<client>`, and closes it again (ticket
+/// 13). One call is one Event group.
+final class AppBudgetWrites implements BudgetWrites {
+  const AppBudgetWrites({
+    required this.directory,
+    this.keys = const KeychainStoreKeys(),
+  });
+
+  final String directory;
+  final StoreKeys keys;
+
+  @override
+  Future<CommandResult> write(
+    McpBudget budget,
+    Command command,
+    Actor actor,
+  ) async {
+    final key = await keys.keyHex(budget.id);
+    if (key == null) {
+      throw StateError('No store key for ${budget.id}; open the app once.');
+    }
+    // Writing with the app's own device id keeps sync uploading MCP's
+    // Events from this device (ticket 12).
+    final deviceId = budget.deviceId;
+    if (deviceId == null) {
+      throw StateError(
+        'Open Settings → AI apps (MCP) in the app once, then try again.',
+      );
+    }
+    final log = SqlCipherEventLog.open(
+      '$directory/${budget.store}',
+      keyHex: key,
+    );
+    try {
+      return BudgetEngine(
+        log: log,
+        deviceId: deviceId,
+        actor: actor,
+      ).execute(command);
     } finally {
       log.close();
     }

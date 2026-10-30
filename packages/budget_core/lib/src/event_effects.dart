@@ -235,6 +235,11 @@ final Map<String, EventSpec> eventSpecs = {
       if (p['cardAccountId'] case final String card) EntityRef.account(card),
     ],
   ),
+  EventType.categoryRenamed: EventSpec(
+    (p) => [
+      SetsFields(EntityRef.category(_id(p, 'categoryId')), {'name': p['name']}),
+    ],
+  ),
   EventType.categoryArchived: _lifecycle(
     EntityKind.category,
     'categoryId',
@@ -404,6 +409,9 @@ List<PlannedEvent>? writeFields(EntityRef entity, Map<String, Object?> fields) {
       return events;
     case EntityKind.category:
       final key = 'categoryId';
+      if (rest.remove('name') case final String name) {
+        events.add((EventType.categoryRenamed, {key: entity.id, 'name': name}));
+      }
       if (rest.containsKey(archivedField)) {
         events.add((
           rest.remove(archivedField) == true

@@ -4,9 +4,9 @@ import 'package:budget_mcp/app_store.dart';
 import 'package:budget_mcp/budget_mcp.dart';
 import 'package:dart_mcp/stdio.dart';
 
-/// `budget-mcp`: ticket 13's read tools over stdio, launched by an MCP
-/// client. It reads the budgets Settings registered in the app's support
-/// folder; `--data-dir <path>` points it somewhere else.
+/// `budget-mcp`: ticket 13's read and write tools over stdio, launched by an
+/// MCP client. It reads and writes the budgets Settings registered in the
+/// app's support folder; `--data-dir <path>` points it somewhere else.
 void main(List<String> arguments) {
   final directory = switch (arguments.indexOf('--data-dir')) {
     -1 => appSupportDirectory,
@@ -23,6 +23,7 @@ void main(List<String> arguments) {
     tools: BudgetTools(
       store: FileMcpStore(directory),
       events: AppEventSource(directory: directory),
+      writes: AppBudgetWrites(directory: directory),
     ),
   );
 }

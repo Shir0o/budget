@@ -5,6 +5,8 @@ import 'package:budget_core/budget_core.dart';
 import 'budgets.dart';
 import 'page.dart';
 
+part 'tools_writes.dart';
+
 /// One tool call: its name and arguments, as a client sent them.
 final class ToolRequest {
   const ToolRequest(this.name, [this.arguments = const {}]);
@@ -21,6 +23,12 @@ final class ToolRequest {
 
   String? string(String key) => switch (arguments[key]) {
     final String value when value.isNotEmpty => value,
+    _ => null,
+  };
+
+  /// [key] as a string with empty allowed, or null when it isn't given.
+  String? text(String key) => switch (arguments[key]) {
+    final String value => value,
     _ => null,
   };
 
@@ -69,6 +77,26 @@ final class ToolRequest {
       throw _Refusal('“$key” must read YYYY-MM-DD.');
     }
   }
+
+  /// [key] as an int of cents, or a refusal.
+  int requireInt(String key) {
+    final value = integer(key);
+    if (value == null) throw _Refusal('“$key” must be a whole number.');
+    return value;
+  }
+
+  /// [key] as a required `YYYY-MM-DD`.
+  CivilDate requireDate(String key) =>
+      date(key) ?? (throw _Refusal('“$key” is required.'));
+
+  /// One of [values] for [key], or a refusal.
+  String requireOneOf(String key, Iterable<String> values) {
+    final value = requireString(key);
+    if (!values.contains(value)) {
+      throw _Refusal('“$key” must be one of ${values.join(', ')}.');
+    }
+    return value;
+  }
 }
 
 /// One tool's answer: the JSON object the client receives, with every string
@@ -84,13 +112,14 @@ final class ToolResult {
   String get text => jsonEncode(content);
 }
 
-/// One read tool as the server lists it.
+/// One tool as the server lists it.
 final class ToolSpec {
   const ToolSpec({
     required this.name,
     required this.description,
     this.arguments = const {},
     this.required = const [],
+    this.writes = false,
   });
 
   final String name;
@@ -100,6 +129,10 @@ final class ToolSpec {
   final Map<String, Object?> arguments;
   final List<String> required;
 
+  /// Whether the call changes the budget. The server marks the rest
+  /// read-only (ticket 13).
+  final bool writes;
+
   Map<String, Object?> get inputSchema => {
     'type': 'object',
     'properties': arguments,
@@ -108,17 +141,19 @@ final class ToolSpec {
   };
 }
 
-/// The read tools ticket 13 lists. Nothing here writes, deletes or marks a
-/// line Reviewed.
+/// The read tools ticket 13 lists, and the write tools Read-write mode adds.
+/// Nothing here deletes anything or marks a line Reviewed.
 final class BudgetTools {
   BudgetTools({
     required this.store,
     required this.events,
+    required this.writes,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
   final McpStore store;
   final EventSource events;
+  final BudgetWrites writes;
   final DateTime Function() _now;
 
   static const _budgetId = {
@@ -277,23 +312,11 @@ final class BudgetTools {
     ),
   ];
 
-  /// Tools ticket 13 gives a Read-write mode. This version doesn't ship them.
-  static const writeToolNames = {
-    'create_transaction',
-    'update_transaction',
-    'split_transaction',
-    'assign',
-    'move_money',
-    'create_schedule',
-    'update_schedule',
-    'set_target',
-    'clear_target',
-    'create_category',
-    'rename_category',
-    'archive_category',
-    'suggest_review',
-    'revert_change',
-  };
+  /// The write tools ticket 13 gives Read-write mode, as here they are.
+  static final writeToolNames = {for (final tool in writeTools) tool.name};
+
+  /// The write tools' specs, beside [specs] in the server's list.
+  static final writeSpecs = [for (final tool in writeTools) tool.spec];
 
   /// Tools that never exist here (ticket 13): a line is Reviewed in the app,
   /// and nothing is deleted through MCP.
@@ -307,65 +330,74 @@ final class BudgetTools {
     'delete_category',
   };
 
-  /// Runs [request], [client] being the MCP client's name for the last-used
-  /// line in Settings.
+  /// Runs [request], [client] being the MCP client that sent it: its name
+  /// becomes the Actor on every write, and the last-used line in Settings.
   Future<ToolResult> call(
     ToolRequest request, {
-    String client = 'unknown',
+    McpClient client = McpClient.unknown,
   }) async {
     try {
-      final spec = _spec(request.name);
-      if (spec == null) {
-        if (writeToolNames.contains(request.name)) {
-          return await _write(request);
-        }
-        if (neverToolNames.contains(request.name)) {
-          return ToolResult.error(
-            'MCP can’t mark lines Reviewed or delete anything. Do it in the app.',
-          );
-        }
-        return ToolResult.error('No tool named “${request.name}”.');
+      if (_spec(request.name) case final spec?) {
+        return await _read(spec, request, client);
       }
-      if (spec.name == 'list_budgets') {
-        return ToolResult(
-          _redact({
-            'budgets': [
-              for (final budget in await store.read())
-                if (budget.book.mode.allowsRead)
-                  {
-                    'id': budget.id,
-                    'name': budget.name,
-                    'mode': budget.book.mode.label,
-                  },
-            ],
-          }),
+      if (_writeTool(request.name) case final tool?) {
+        return await _write(tool, request, client);
+      }
+      if (neverToolNames.contains(request.name)) {
+        return ToolResult.error(
+          'MCP can’t mark lines Reviewed or delete anything. Do it in the app.',
         );
       }
-      final budget = await _open(request);
-      final log = await events.events(budget);
-      await store.recordUse(budget.id, client, _now());
-      final state = BudgetState.replay(log);
-      final content = switch (spec.name) {
-        'get_month' => _month(state, budget, request),
-        'list_categories' => _categories(state, budget),
-        'list_accounts' => _accounts(state, budget),
-        'search_transactions' => _search(state, budget, request),
-        'get_transaction' => _transaction(
-          state,
-          budget,
-          request.requireString('transactionId'),
-        ),
-        'list_unreviewed' => _unreviewed(state, budget, request),
-        'list_targets' => _targets(state, budget, request),
-        'get_forecast' => _forecast(state, budget, request),
-        'get_business_report' => _business(state, budget, request),
-        'get_change_history' => _history(log, budget, request),
-        _ => throw _Refusal('No tool named “${spec.name}”.'),
-      };
-      return ToolResult(_redact(content));
+      return ToolResult.error('No tool named “${request.name}”.');
     } on _Refusal catch (refusal) {
       return ToolResult.error(refusal.message);
+    } on StateError catch (error) {
+      return ToolResult.error(error.message);
     }
+  }
+
+  Future<ToolResult> _read(
+    ToolSpec spec,
+    ToolRequest request,
+    McpClient client,
+  ) async {
+    if (spec.name == 'list_budgets') {
+      return ToolResult(
+        _redact({
+          'budgets': [
+            for (final budget in await store.read())
+              if (budget.book.mode.allowsRead)
+                {
+                  'id': budget.id,
+                  'name': budget.name,
+                  'mode': budget.book.mode.label,
+                },
+          ],
+        }),
+      );
+    }
+    final budget = await _open(request);
+    final log = await events.events(budget);
+    await store.recordUse(budget.id, client.name, _now());
+    final state = BudgetState.replay(log);
+    final content = switch (spec.name) {
+      'get_month' => _month(state, budget, request),
+      'list_categories' => _categories(state, budget),
+      'list_accounts' => _accounts(state, budget),
+      'search_transactions' => _search(state, budget, request),
+      'get_transaction' => _transaction(
+        state,
+        budget,
+        request.requireString('transactionId'),
+      ),
+      'list_unreviewed' => _unreviewed(state, budget, request),
+      'list_targets' => _targets(state, budget, request),
+      'get_forecast' => _forecast(state, budget, request),
+      'get_business_report' => _business(state, budget, request),
+      'get_change_history' => _history(log, budget, request),
+      _ => throw _Refusal('No tool named “${spec.name}”.'),
+    };
+    return ToolResult(_redact(content));
   }
 
   ToolSpec? _spec(String name) {
@@ -373,6 +405,76 @@ final class BudgetTools {
       if (spec.name == name) return spec;
     }
     return null;
+  }
+
+  WriteTool? _writeTool(String name) {
+    for (final tool in writeTools) {
+      if (tool.name == name) return tool;
+    }
+    return null;
+  }
+
+  /// Runs one write tool: Read-write only, one Event group, actor
+  /// `mcp:<client>` (ticket 13).
+  Future<ToolResult> _write(
+    WriteTool tool,
+    ToolRequest request,
+    McpClient client,
+  ) async {
+    final budget = await _open(request);
+    if (!budget.book.mode.allowsWrite) {
+      return ToolResult.error('MCP is read-only for this budget.');
+    }
+    // A card or account number is refused before it can be stored, rather
+    // than redacted afterwards (ticket 13).
+    _checkNumbers(request.arguments);
+    final command = tool.build(request, _thisMonth());
+    if (command is RevertGroup) {
+      final entry = ChangeHistory.of(await events.events(budget))
+          .entry(command.groupId);
+      if (entry == null) throw const _Refusal('No change with that group id.');
+      if (entry.actor.kind != ActorKind.mcp) {
+        throw const _Refusal('MCP can only revert changes it made.');
+      }
+    }
+    final result = await writes.write(budget, command, client.actor);
+    await store.recordUse(budget.id, client.name, _now());
+    switch (result) {
+      case Rejected(:final reason):
+        return ToolResult.error(_rejection(reason));
+      case Accepted(events: final written) when written.isNotEmpty:
+        final groupId = written.first.groupId;
+        final group = ToolCallGroup(
+          budgetId: budget.id,
+          id: groupId,
+          client: client,
+          events: written,
+          summary: ChangeHistory.of(await events.events(budget))
+              .entry(groupId)
+              ?.summary,
+        );
+        return ToolResult(_redact(group.toJson()));
+      case Accepted():
+        return ToolResult.error('That would change nothing.');
+    }
+  }
+
+  /// Refuses [value]'s text if it looks like a card or account number
+  /// (ticket 13). Ids are opaque values made here, so they are left out.
+  void _checkNumbers(Object? value, {String? key}) {
+    switch (value) {
+      case final Map<Object?, Object?> map:
+        for (final MapEntry(:key, :value) in map.entries) {
+          _checkNumbers(value, key: key is String ? key : null);
+        }
+      case final List<Object?> list:
+        for (final item in list) {
+          _checkNumbers(item, key: key);
+        }
+      case final String text
+          when (key == null || !_isId(key)) && containsSensitiveNumber(text):
+        throw const _Refusal(_sensitiveNumber);
+    }
   }
 
   /// The budget in [request], refusing one whose mode is Off.
@@ -386,19 +488,6 @@ final class BudgetTools {
       );
     }
     return budget;
-  }
-
-  /// A write tool's refusal: never in Off or Read-only, and not in this
-  /// version even in Read-write.
-  Future<ToolResult> _write(ToolRequest request) async {
-    final budget = await _open(request);
-    if (!budget.book.mode.allowsWrite) {
-      return ToolResult.error('MCP is read-only for this budget.');
-    }
-    return ToolResult.error(
-      'Write tools are not available in this version. '
-      'Everything MCP can do here is read-only.',
-    );
   }
 
   Map<String, Object?> _month(

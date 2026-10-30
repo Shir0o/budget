@@ -1,4 +1,12 @@
-import 'package:budget_core/budget_core.dart' show Event;
+import 'package:budget_core/budget_core.dart'
+    show
+        Actor,
+        BudgetEngine,
+        Command,
+        CommandResult,
+        Event,
+        EventLog,
+        InMemoryEventLog;
 
 import 'book.dart';
 
@@ -10,6 +18,7 @@ final class McpBudget {
     required this.name,
     required this.store,
     this.book = McpBook.off,
+    this.deviceId,
   });
 
   static McpBudget fromJson(Map<String, Object?> json) => McpBudget(
@@ -19,6 +28,7 @@ final class McpBudget {
     book: McpBook.fromJson(
       (json['book'] as Map?)?.cast<String, Object?>() ?? const {},
     ),
+    deviceId: json['deviceId'] as String?,
   );
 
   final String id;
@@ -28,14 +38,25 @@ final class McpBudget {
   final String store;
   final McpBook book;
 
-  McpBudget withBook(McpBook book) =>
-      McpBudget(id: id, name: name, store: store, book: book);
+  /// The id the app writes this device's Events with. A write tool stamps
+  /// its group with it too, so sync still uploads MCP's changes. Null until
+  /// the app registers the budget.
+  final String? deviceId;
+
+  McpBudget withBook(McpBook book) => McpBudget(
+    id: id,
+    name: name,
+    store: store,
+    book: book,
+    deviceId: deviceId,
+  );
 
   Map<String, Object?> toJson() => {
     'id': id,
     'name': name,
     'store': store,
     'book': book.toJson(),
+    'deviceId': ?deviceId,
   };
 }
 
@@ -69,8 +90,12 @@ extension McpStoreChanges on McpStore {
 
   /// Adds or updates the app's budgets, keeping each one's setting, and
   /// drops budgets the app no longer has. A budget this device has never
-  /// seen starts Off.
-  Future<void> register(Iterable<StoredBudget> budgets) async {
+  /// seen starts Off. [deviceId] is the app's, which a write tool stamps its
+  /// Events with so sync still uploads them.
+  Future<void> register(
+    Iterable<StoredBudget> budgets, {
+    String? deviceId,
+  }) async {
     final stored = {for (final budget in await read()) budget.id: budget};
     final next = <McpBudget>[];
     final seen = <String>{};
@@ -83,6 +108,7 @@ extension McpStoreChanges on McpStore {
           name: name,
           store: store,
           book: existing?.book ?? McpBook.off,
+          deviceId: deviceId ?? existing?.deviceId,
         ),
       );
     }
@@ -129,4 +155,38 @@ final class InMemoryEventSource implements EventSource {
   @override
   Future<List<Event>> events(McpBudget budget) async =>
       List.of(_logs[budget.id] ?? const []);
+}
+
+/// Where a write tool's one Event group goes (ticket 13). The app and
+/// `budget-mcp` open the SQLCipher store and run the Command through a
+/// [BudgetEngine] with actor `mcp:<client>`; tests keep logs in memory.
+abstract interface class BudgetWrites {
+  /// Runs [command] as [actor] and answers the one group it appended, or why
+  /// it was refused.
+  Future<CommandResult> write(McpBudget budget, Command command, Actor actor);
+}
+
+/// A [BudgetWrites] over in-memory logs, for tests and previews.
+final class InMemoryBudgetWrites implements BudgetWrites {
+  InMemoryBudgetWrites([
+    Map<String, EventLog> logs = const {},
+    this.deviceId = 'test-device',
+  ]) : _logs = {...logs};
+
+  final Map<String, EventLog> _logs;
+  final String deviceId;
+
+  @override
+  Future<CommandResult> write(
+    McpBudget budget,
+    Command command,
+    Actor actor,
+  ) async {
+    final log = _logs.putIfAbsent(budget.id, InMemoryEventLog.new);
+    return BudgetEngine(
+      log: log,
+      deviceId: deviceId,
+      actor: actor,
+    ).execute(command);
+  }
 }

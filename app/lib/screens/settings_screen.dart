@@ -166,14 +166,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           value: 'Pairing code',
           onTap: () => _open(JoinScreen(services: widget.services)),
         ),
-        if (widget.services.mcp != null)
-          SettingsRow(
-            label: 'AI apps (MCP)',
-            value: _mcpMode.label,
-            onTap: () => _open(
-              McpScreen(engine: widget.engine, services: widget.services),
-            ),
+        SettingsRow(
+          label: 'AI apps (MCP)',
+          value: _mcpMode.label,
+          onTap: () => _open(
+            McpScreen(engine: widget.engine, services: widget.services),
           ),
+        ),
         SettingsRow(
           label: 'Import from Actual',
           onTap: () => _open(

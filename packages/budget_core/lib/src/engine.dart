@@ -246,6 +246,9 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
     case ReviewLine():
       return _reviewLine(command, state, stamp);
 
+    case SuggestReview():
+      return _suggestReview(command, state, stamp);
+
     case DeleteTransaction(:final transactionId):
       final transaction = state.transaction(transactionId);
       if (transaction == null) {
@@ -277,6 +280,19 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
         stamp.event(EventType.categoryCreated, {
           'categoryId': newId(),
           'categoryGroupId': groupId,
+          'name': name.trim(),
+        }),
+      ]);
+
+    case RenameCategory(:final categoryId, :final name):
+      if (_checkActive(state, categoryId) case final rejected?) return rejected;
+      if (name.trim().isEmpty) return const Rejected(Rejection.nameRequired);
+      if (state.category(categoryId)!.name == name.trim()) {
+        return const Rejected(Rejection.noChange);
+      }
+      return Accepted([
+        stamp.event(EventType.categoryRenamed, {
+          'categoryId': categoryId,
           'name': name.trim(),
         }),
       ]);
@@ -611,6 +627,76 @@ CommandResult _reviewLine(ReviewLine command, BudgetState state, _Stamp stamp) {
       'category': category,
       ...?business?.toJson(),
       'recipient': ?recipient,
+    }),
+  ]);
+}
+
+/// Fills a line's values without finishing its Review (ticket 13). The line
+/// stays Unreviewed, and Reviewed stays a person's tap (ADR 0003).
+CommandResult _suggestReview(
+  SuggestReview command,
+  BudgetState state,
+  _Stamp stamp,
+) {
+  final transaction = state.transaction(command.transactionId);
+  if (transaction == null) {
+    return const Rejected(Rejection.unknownTransaction);
+  }
+  if (transaction.isTransfer) {
+    return const Rejected(Rejection.transferNotReviewable);
+  }
+  final line = transaction.lines
+      .where((line) => line.id == command.lineId)
+      .firstOrNull;
+  if (line == null) return const Rejected(Rejection.unknownLine);
+  if (line.reviewed) return const Rejected(Rejection.alreadyReviewed);
+  final category = command.category ?? line.category;
+  final business = switch (command.business) {
+    Business(:final tag) => Business(tag.trim()),
+    final given => given ?? line.business,
+  };
+  final recipient = command.recipient == null
+      ? line.recipient
+      : switch (command.recipient!.trim()) {
+          '' => null,
+          final recipient => recipient,
+        };
+  if (category != null &&
+      category != readyToAssignCategory &&
+      category != line.category) {
+    if (_checkActive(state, category) case final rejected?) return rejected;
+  }
+  if (business case Business(:final tag) when tag.isEmpty) {
+    return const Rejected(Rejection.businessTagRequired);
+  }
+  if (_checkText([recipient]) case final rejected?) return rejected;
+  if (category == line.category &&
+      business == line.business &&
+      recipient == line.recipient) {
+    return const Rejected(Rejection.noChange);
+  }
+  final suggested = TransactionLine(
+    id: line.id,
+    amount: line.amount,
+    category: category,
+    business: business,
+    memo: line.memo,
+    recipient: recipient,
+    note: line.note,
+    reviewed: false,
+  );
+  Map<String, Object?> stored(TransactionLine line) => {
+    ..._storedLine(line),
+    'note': ?line.note,
+  };
+  return Accepted([
+    stamp.event(EventType.transactionSplitSet, {
+      'transactionId': transaction.id,
+      'amountCents': transaction.amount.cents,
+      'lines': [
+        for (final other in transaction.lines)
+          stored(other.id == line.id ? suggested : other),
+      ],
     }),
   ]);
 }

@@ -213,6 +213,27 @@ final class ReviewLine extends Command {
   final String? recipient;
 }
 
+/// Fills one line's Category and business status without marking it Reviewed
+/// (ticket 13): a person's tap in the app is still the only thing that
+/// finishes a Review (ADR 0003). Null fields keep the line's own values.
+final class SuggestReview extends Command {
+  const SuggestReview({
+    required this.transactionId,
+    required this.lineId,
+    this.category,
+    this.business,
+    this.recipient,
+  });
+
+  final String transactionId;
+  final String lineId;
+
+  /// A Category id, or [readyToAssignCategory] for income.
+  final String? category;
+  final BusinessStatus? business;
+  final String? recipient;
+}
+
 /// Adds a category group, such as Bills or Everyday.
 final class CreateCategoryGroup extends Command {
   const CreateCategoryGroup({required this.name});
@@ -225,6 +246,14 @@ final class CreateCategory extends Command {
   const CreateCategory({required this.groupId, required this.name});
 
   final String groupId;
+  final String name;
+}
+
+/// Renames a Category. Its group, Target, Assignments and lines stay.
+final class RenameCategory extends Command {
+  const RenameCategory({required this.categoryId, required this.name});
+
+  final String categoryId;
   final String name;
 }
 
@@ -609,6 +638,14 @@ enum Rejection {
 
   /// [ReviewLine] of a line id the transaction doesn't have.
   unknownLine,
+
+  /// [SuggestReview] of a line a person has already Reviewed. Change it in
+  /// the app instead.
+  alreadyReviewed,
+
+  /// [SuggestReview] of a transfer line: a transfer isn't spending, so Review
+  /// never asks about it.
+  transferNotReviewable,
 
   /// [ConfirmBankMatch] or [RejectBankMatch] of a transaction that isn't
   /// waiting on a possible bank match.
