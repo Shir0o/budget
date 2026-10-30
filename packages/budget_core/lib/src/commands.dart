@@ -3,6 +3,7 @@ import 'civil_date.dart';
 import 'event.dart';
 import 'history.dart';
 import 'money.dart';
+import 'review.dart';
 
 /// A request to change the budget. Commands are validated against the
 /// current [BudgetState] and either produce one Event group or a
@@ -60,6 +61,7 @@ final class LineInput {
     this.category,
     this.business,
     this.memo = '',
+    this.recipient,
     this.id,
   });
 
@@ -78,11 +80,14 @@ final class LineInput {
   /// Null to leave it unset.
   final BusinessStatus? business;
   final String memo;
+
+  /// Who received a gift line. Null when unset.
+  final String? recipient;
 }
 
 /// Enters a transaction by hand. Its [lines] must sum to [amount]. When a
-/// person enters it, each line with both a category and a business status
-/// is Reviewed (ticket 09).
+/// person enters it, each line that [reviewNeed] finds complete is Reviewed
+/// (ticket 09).
 final class CreateTransaction extends Command {
   const CreateTransaction({
     required this.accountId,
@@ -157,6 +162,27 @@ final class CreateTransfer extends Command {
   final CivilDate date;
   final String? category;
   final String memo;
+}
+
+/// A person marks one line Reviewed with its Category and business status
+/// (ticket 09). Any actor other than a person is rejected (ADR 0003). A
+/// transfer line skips [business]; a gift line needs a [recipient].
+final class ReviewLine extends Command {
+  const ReviewLine({
+    required this.transactionId,
+    required this.lineId,
+    required this.category,
+    required this.business,
+    this.recipient,
+  });
+
+  final String transactionId;
+  final String lineId;
+
+  /// A Category id, or [readyToAssignCategory] for income.
+  final String? category;
+  final BusinessStatus? business;
+  final String? recipient;
 }
 
 /// Adds a category group, such as Bills or Everyday.
@@ -330,6 +356,23 @@ enum Rejection {
   /// [RevertGroup] without [RevertGroup.includeDependents] when later
   /// changes depend on what the group created.
   hasDependents,
+
+  /// [ReviewLine] from bank sync, automation, an import, MCP or a revert.
+  /// Only a person marks a line Reviewed (ADR 0003).
+  personRequired,
+
+  /// [ReviewLine] of a line id the transaction doesn't have.
+  unknownLine,
+
+  /// [ReviewLine] without a Category.
+  categoryRequired,
+
+  /// [ReviewLine] without Personal or Business on a line that isn't a
+  /// transfer.
+  businessStatusRequired,
+
+  /// [ReviewLine] of a gift line without a recipient.
+  recipientRequired,
 }
 
 /// What a command produced.

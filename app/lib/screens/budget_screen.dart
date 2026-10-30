@@ -13,7 +13,7 @@ import 'settings_screen.dart';
 
 /// The Budget month (canvas: Main): Ready to Assign, then each category
 /// group's Categories with their Assigned and Available for the month.
-/// Assign and Review arrive with later tickets.
+/// Assign arrives with a later ticket.
 class BudgetScreen extends StatefulWidget {
   const BudgetScreen({super.key, required this.engine});
 

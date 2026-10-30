@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'screens/accounts_screen.dart';
 import 'screens/budget_screen.dart';
 import 'screens/history_screen.dart';
+import 'screens/review_screen.dart';
 import 'theme.dart';
 
 const _months = [
@@ -73,104 +74,158 @@ class AvailablePill extends StatelessWidget {
   }
 }
 
-/// The bottom navigation's tabs. Review is added when its screen arrives.
-enum MainTab { budget, accounts, history }
+/// The bottom navigation's tabs.
+enum MainTab { budget, review, accounts, history }
 
-/// The bottom navigation. Tapping a tab replaces the current screen.
+/// The bottom navigation. Review shows a badge with the Unreviewed count.
 class MainNav extends StatelessWidget {
   const MainNav({super.key, required this.engine, required this.current});
 
   final BudgetEngine engine;
   final MainTab current;
 
-  static const _tabs = [
-    (MainTab.budget, 'Budget', Icons.table_chart_outlined),
-    (MainTab.accounts, 'Accounts', Icons.account_balance_outlined),
-    (MainTab.history, 'History', Icons.schedule),
-  ];
-
-  Widget _screen(MainTab tab) => switch (tab) {
-    MainTab.budget => BudgetScreen(engine: engine),
-    MainTab.accounts => AccountsScreen(engine: engine),
-    MainTab.history => HistoryScreen(engine: engine),
-  };
+  void _go(BuildContext context, MainTab tab) {
+    if (tab == current) return;
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder<void>(
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        pageBuilder: (_, _, _) => switch (tab) {
+          MainTab.budget => BudgetScreen(engine: engine),
+          MainTab.review => ReviewScreen(engine: engine),
+          MainTab.accounts => AccountsScreen(engine: engine),
+          MainTab.history => HistoryScreen(engine: engine),
+        },
+      ),
+    );
+  }
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: const BoxDecoration(
-      color: Palette.card,
-      border: Border(top: BorderSide(color: Palette.cardBorder)),
-    ),
-    child: SafeArea(
-      top: false,
-      child: SizedBox(
-        height: 80,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
+  Widget build(BuildContext context) {
+    final unreviewed = engine.state.reviewQueue.length;
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: Palette.card,
+        border: Border(top: BorderSide(color: Palette.cardBorder)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 80,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                for (final (tab, label, icon, badge) in [
+                  (MainTab.budget, 'Budget', Icons.table_chart_outlined, 0),
+                  (MainTab.review, 'Review', Icons.check, unreviewed),
+                  (
+                    MainTab.accounts,
+                    'Accounts',
+                    Icons.account_balance_outlined,
+                    0,
+                  ),
+                  (MainTab.history, 'History', Icons.schedule, 0),
+                ])
+                  Expanded(
+                    child: _NavTab(
+                      label: label,
+                      icon: icon,
+                      badge: badge,
+                      selected: tab == current,
+                      onTap: () => _go(context, tab),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavTab extends StatelessWidget {
+  const _NavTab({
+    required this.label,
+    required this.icon,
+    required this.badge,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+
+  /// A count shown on the icon, hidden at 0.
+  final int badge;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    selected: selected,
+    button: true,
+    label: badge > 0 ? '$label, $badge to review' : label,
+    excludeSemantics: true,
+    child: InkWell(
+      onTap: onTap,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        spacing: 4,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
             children: [
-              for (final (tab, label, icon) in _tabs)
-                Expanded(
-                  child: Semantics(
-                    selected: tab == current,
-                    button: true,
-                    child: InkWell(
-                      onTap: tab == current
-                          ? null
-                          : () => Navigator.of(context).pushReplacement(
-                              PageRouteBuilder<void>(
-                                pageBuilder: (_, _, _) => _screen(tab),
-                                transitionDuration: Duration.zero,
-                              ),
-                            ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        spacing: 4,
-                        children: [
-                          _NavPill(icon: icon, selected: tab == current),
-                          Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: tab == current
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                              color: tab == current
-                                  ? Palette.ink
-                                  : Palette.muted,
-                            ),
-                          ),
-                        ],
+              Container(
+                width: 56,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: selected ? Palette.positivePill : null,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Icon(
+                  icon,
+                  size: 22,
+                  color: selected ? Palette.positiveText : Palette.muted,
+                ),
+              ),
+              if (badge > 0)
+                Positioned(
+                  right: 4,
+                  top: -4,
+                  child: Container(
+                    key: ValueKey('$label-badge'),
+                    constraints: const BoxConstraints(minWidth: 18),
+                    height: 18,
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Palette.problemText,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$badge',
+                      style: amountStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
                   ),
                 ),
             ],
           ),
-        ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: selected ? Palette.ink : Palette.muted,
+            ),
+          ),
+        ],
       ),
-    ),
-  );
-}
-
-class _NavPill extends StatelessWidget {
-  const _NavPill({required this.icon, required this.selected});
-
-  final IconData icon;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 56,
-    height: 30,
-    decoration: BoxDecoration(
-      color: selected ? Palette.positivePill : null,
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: Icon(
-      icon,
-      size: 22,
-      color: selected ? Palette.positiveText : Palette.muted,
     ),
   );
 }

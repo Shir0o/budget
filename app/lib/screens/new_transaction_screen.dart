@@ -223,6 +223,10 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       return 'Each line with a Category and Personal or Business saves as '
           'Reviewed.';
     }
+    if (_category != null && _business == const Business(giftsTag)) {
+      return 'Gift lines need a recipient, so it saves as Unreviewed. Add '
+          'the recipient in Review.';
+    }
     if (_category != null && isSet(_business)) {
       final status = _business is Personal ? 'Personal' : 'Business';
       return 'Category and $status are set, so it saves as Reviewed.';

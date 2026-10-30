@@ -1,6 +1,7 @@
 import 'civil_date.dart';
 import 'event.dart';
 import 'money.dart';
+import 'review.dart';
 
 part 'budget_math.dart';
 
@@ -155,6 +156,7 @@ final class TransactionLine {
     required this.category,
     this.business,
     this.memo = '',
+    this.recipient,
     this.reviewed = false,
   });
 
@@ -169,7 +171,11 @@ final class TransactionLine {
   final BusinessStatus? business;
   final String memo;
 
+  /// Who received a gift line (Business Tag [giftsTag]). Null when unset.
+  final String? recipient;
+
   /// Only a person marks a line Reviewed (ADR 0003).
+  /// See [reviewNeed] for what it takes.
   final bool reviewed;
 }
 
@@ -500,6 +506,8 @@ final class BudgetState {
           amount: Money(p['amountCents'] as int),
           lines: _lines(p['lines'] as List),
         );
+      case EventType.reviewSet:
+        _applyReviewSet(event);
       case EventType.transactionDeleted:
         final id = p['transactionId'] as String;
         _deleted.add(id);
@@ -570,7 +578,37 @@ final class BudgetState {
           line['businessTag'],
         ),
         memo: line['memo'] as String? ?? '',
+        recipient: line['recipient'] as String?,
         reviewed: line['reviewed'] as bool? ?? false,
       ),
   ];
+
+  /// Marks one line Reviewed with a person's values. A ReviewSet from any
+  /// other actor is ignored, so a merged log can't bypass ADR 0003.
+  void _applyReviewSet(Event event) {
+    if (!event.actor.isPerson) return;
+    final p = event.payload;
+    final transaction = _transactions[p['transactionId'] as String];
+    if (transaction == null) return;
+    final lineId = p['lineId'] as String;
+    _transactions[transaction.id] = transaction._copyWith(
+      lines: [
+        for (final line in transaction.lines)
+          line.id != lineId
+              ? line
+              : TransactionLine(
+                  id: line.id,
+                  amount: line.amount,
+                  category: p['category'] as String?,
+                  business: BusinessStatus.fromJson(
+                    p['business'],
+                    p['businessTag'],
+                  ),
+                  memo: line.memo,
+                  recipient: p['recipient'] as String?,
+                  reviewed: true,
+                ),
+      ],
+    );
+  }
 }
