@@ -4,3 +4,8 @@ private/
 **/actual-export*.zip
 **/ynab-export*.zip
 *.sqlite
+
+# Dart and Flutter
+.dart_tool/
+build/
+coverage/

@@ -1,0 +1,16 @@
+name: budget_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+workspace:
+  - packages/budget_core
+  - packages/budget_store
+  - app
+
+hooks:
+  user_defines:
+    sqlite3:
+      # Bundle SQLCipher instead of plain SQLite so the event store is encrypted.
+      source: sqlcipher
