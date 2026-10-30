@@ -22,9 +22,11 @@ String transactionsCsv(BudgetState state) => _csv(
           t.date.toIso(),
           state.account(t.accountId)?.name ?? '',
           t.payee,
-          line.category == readyToAssignCategory
-              ? 'Ready to Assign'
-              : state.category(line.category)?.name ?? line.category,
+          switch (line.category) {
+            null => '',
+            readyToAssignCategory => 'Ready to Assign',
+            final id => state.category(id)?.name ?? id,
+          },
           _decimal(line.amount.cents),
         ],
   ],
@@ -88,6 +90,8 @@ String stateJson(BudgetState state, {required CalendarMonth month}) {
           'accountId': t.accountId,
           'date': t.date.toIso(),
           'payee': t.payee,
+          'memo': t.memo,
+          'cleared': t.cleared.name,
           'amountCents': t.amount.cents,
           'lines': [
             for (final line in t.lines)
@@ -95,6 +99,13 @@ String stateJson(BudgetState state, {required CalendarMonth month}) {
                 'id': line.id,
                 'amountCents': line.amount.cents,
                 'category': line.category,
+                'business': switch (line.business) {
+                  null => null,
+                  Personal() => 'personal',
+                  Business(:final tag) => {'tag': tag},
+                },
+                'memo': line.memo,
+                'reviewed': line.reviewed,
               },
           ],
         },

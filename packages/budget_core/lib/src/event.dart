@@ -64,10 +64,26 @@ abstract final class EventType {
   /// `{accountId, name, accountType}`
   static const accountCreated = 'AccountCreated';
 
-  /// `{transactionId, accountId, date, payee, amountCents,
-  /// lines: [{lineId, amountCents, category}]}`, where `category` is
-  /// [readyToAssignCategory] for income.
+  /// `{transactionId, accountId, date, payee, memo, cleared, amountCents,
+  /// lines}`. Each line is `{lineId, amountCents, category, business,
+  /// businessTag, memo, reviewed}`, where `category` is
+  /// [readyToAssignCategory] for income and null while uncategorized, and
+  /// `business` is `personal`, `business` (with `businessTag`) or null.
+  /// Events written before ticket 03 lack memo, cleared and the line's
+  /// business, memo and reviewed.
   static const transactionCreated = 'TransactionCreated';
+
+  /// `{transactionId, fields: {payee?, date?, memo?, cleared?}}`. Each field
+  /// is last writer wins on its own.
+  static const transactionFieldsSet = 'TransactionFieldsSet';
+
+  /// `{transactionId, amountCents, lines}`, lines as in
+  /// [transactionCreated]. Replaces the whole line set, so lines from two
+  /// devices are never mixed (ticket 06).
+  static const transactionSplitSet = 'TransactionSplitSet';
+
+  /// `{transactionId}`. Beats any concurrent edit (ticket 06).
+  static const transactionDeleted = 'TransactionDeleted';
 
   /// `{categoryGroupId, name}`
   static const categoryGroupCreated = 'CategoryGroupCreated';
