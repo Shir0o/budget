@@ -1,6 +1,7 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../budget_library.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'budget_screen.dart';
@@ -31,6 +32,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
   var _asOf = today();
   String? _nameError;
   String? _balanceError;
+  var _saving = false;
 
   @override
   void dispose() {
@@ -44,7 +46,8 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
     if (!_nameEdited) _name.text = _typeLabels[type]!;
   });
 
-  void _save() {
+  Future<void> _save() async {
+    if (_saving) return;
     final balance = _balance.text.trim().isEmpty
         ? Money.zero
         : Money.tryParse(_balance.text);
@@ -55,6 +58,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
     if (_nameError != null || balance == null) return;
 
     final engine = widget.engine;
+    final library = BudgetLibraryScope.of(context);
     final newBudgetName = widget.newBudgetName;
     if (newBudgetName != null && engine.state.budget == null) {
       engine.execute(CreateBudget(name: newBudgetName));
@@ -71,8 +75,11 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
 
     final navigator = Navigator.of(context);
     if (newBudgetName != null) {
+      // The new budget gets its own store file and key now.
+      _saving = true;
+      final stored = await library.commit(engine);
       navigator.pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => BudgetScreen(engine: engine)),
+        MaterialPageRoute<void>(builder: (_) => BudgetScreen(engine: stored)),
         (_) => false,
       );
     } else {

@@ -17,6 +17,14 @@ abstract interface class DevicePrefs {
   Future<void> writeAppLockEnabled(bool enabled);
   Future<CivilDate?> readLastBackup();
   Future<void> writeLastBackup(CivilDate date);
+
+  /// The ids of the budgets stored on this device, in the order they were made.
+  Future<List<String>> readBudgetIds();
+  Future<void> writeBudgetIds(List<String> ids);
+
+  /// The budget that was open last, which the app opens next time.
+  Future<String?> readLastBudgetId();
+  Future<void> writeLastBudgetId(String id);
 }
 
 /// Hands a finished file to the person to save where they choose.
@@ -120,6 +128,8 @@ final class InMemoryBudgetKeyStore implements BudgetKeyStore {
 final class InMemoryDevicePrefs implements DevicePrefs {
   bool _appLock = false;
   CivilDate? _lastBackup;
+  var _budgetIds = <String>[];
+  String? _lastBudgetId;
 
   @override
   Future<bool> readAppLockEnabled() async => _appLock;
@@ -132,6 +142,19 @@ final class InMemoryDevicePrefs implements DevicePrefs {
 
   @override
   Future<void> writeLastBackup(CivilDate date) async => _lastBackup = date;
+
+  @override
+  Future<List<String>> readBudgetIds() async => List.of(_budgetIds);
+
+  @override
+  Future<void> writeBudgetIds(List<String> ids) async =>
+      _budgetIds = List.of(ids);
+
+  @override
+  Future<String?> readLastBudgetId() async => _lastBudgetId;
+
+  @override
+  Future<void> writeLastBudgetId(String id) async => _lastBudgetId = id;
 }
 
 /// Keeps "saved" files in [saved] instead of writing them anywhere.
