@@ -244,6 +244,27 @@ void main() {
       expect(starting.lines.single.category, readyToAssignCategory);
     });
 
+    test('imports current-year transfers and Starting Balances Unreviewed', () {
+      final export = ActualExport.read(
+        ActualZip.decode(syntheticActualZip(extraRows: _visaRows)),
+      );
+      final plan = buildImportPlan(
+        export: export,
+        tagMappings: defaultTagMappings(export),
+        today: _today,
+      );
+      ImportLine line(String id) => plan.transactions
+          .singleWhere((t) => t.id == 'actual-transaction-$id')
+          .lines
+          .single;
+
+      expect(line('tx-transfer-out').reviewed, isFalse);
+      expect(line('tx-transfer-in').reviewed, isFalse);
+      expect(line('tx-visa-open').reviewed, isFalse);
+      // Earlier years stay Reviewed.
+      expect(line('tx-open').reviewed, isTrue);
+    });
+
     test('sends a line mapped to two tags back to Review', () {
       final plan = _plan();
       final conflict = plan.transactions.singleWhere(
@@ -333,7 +354,8 @@ void main() {
       expect(report.transactions, 15);
       expect(report.incomeCategories, 1);
       expect(report.balancesMatch, isTrue);
-      expect(report.unreviewedLines, 2);
+      // The current year: two lines plus both sides of three transfers.
+      expect(report.unreviewedLines, 8);
       expect(report.lastTransactionDate, CivilDate(2026, 10, 1));
       for (final expected in [
         '3 rules',
@@ -439,6 +461,39 @@ void main() {
       },
     );
 
+    test('ticket 07 example 6: imported card debt starts unfunded', () {
+      final export = ActualExport.read(
+        ActualZip.decode(syntheticActualZip(extraRows: _visaRows)),
+      );
+      final plan = buildImportPlan(
+        export: export,
+        tagMappings: defaultTagMappings(export),
+        today: _today,
+      );
+      final (withoutVisa, _) = _engine();
+      commitImport(withoutVisa, _plan());
+      final (engine, _) = _engine();
+
+      commitImport(engine, plan);
+
+      final state = engine.state;
+      const visa = 'actual-account-acct-visa';
+      final month = CalendarMonth(2026, 10);
+      final opening = state.register(visa).single;
+      expect(opening.startingBalance, isTrue);
+      expect(opening.lines.single.category, isNull);
+      expect(state.balance(visa), const Money(-200000));
+      expect(
+        state.available(state.cardPaymentCategory(visa)!.id, month),
+        Money.zero,
+      );
+      expect(state.unfundedDebt(visa, month), const Money(200000));
+      expect(
+        state.readyToAssign(month),
+        withoutVisa.state.readyToAssign(month),
+      );
+    });
+
     test('reverts the whole import as one group', () {
       final (engine, _) = _engine();
       final commit = commitImport(engine, _plan());
@@ -488,3 +543,12 @@ void main() {
     });
   });
 }
+
+/// A Visa opened in the current year with $2,000 of existing debt.
+const _visaRows = '''
+  INSERT INTO accounts VALUES
+    ('acct-visa', 'Visa', 0, 0, 'credit', 0);
+  INSERT INTO transactions VALUES
+    ('tx-visa-open', 'acct-visa', NULL, -200000, NULL, '',
+     20261001, 'cleared', 1, 0, 0, NULL, NULL, 1, NULL, NULL, NULL, 0);
+''';

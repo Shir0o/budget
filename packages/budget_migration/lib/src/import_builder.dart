@@ -180,7 +180,9 @@ ImportPlan buildImportPlan({
       if (business == const Business(giftsTag)) giftsWithoutRecipient++;
       final startingBalance = row.startingBalance;
       final categoryId = startingBalance
-          ? account.type.onBudget
+          // A card's Starting Balance is unfunded debt, like a tracking
+          // account's it has no Category (ticket 07 example 6).
+          ? account.type.onBudget && account.type != AccountType.creditCard
                 ? readyToAssignCategory
                 : null
           : transfer.isTransfer
@@ -194,12 +196,13 @@ ImportPlan buildImportPlan({
           category: categoryId,
           business: transfer.isTransfer || startingBalance ? null : business,
           memo: line == row ? '' : maskSensitiveNumbers(line.notes),
+          // Only earlier years import Reviewed; the current tax year waits
+          // for a person's tap (ADR 0003, ticket 09).
           reviewed:
-              transfer.isTransfer ||
-              startingBalance ||
-              (row.date.year < today.year &&
-                  !conflicted &&
-                  business != const Business(giftsTag)),
+              row.date.year < today.year &&
+              (transfer.isTransfer ||
+                  startingBalance ||
+                  (!conflicted && business != const Business(giftsTag))),
         ),
       );
     }
