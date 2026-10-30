@@ -1,4 +1,5 @@
 import 'package:budget_core/budget_core.dart';
+import 'package:budget_mcp/budget_mcp.dart';
 import 'package:budget_sync/budget_sync.dart';
 import 'package:flutter/material.dart';
 
@@ -13,6 +14,7 @@ import 'connect_bank_screen.dart';
 import 'encrypted_sync_screen.dart';
 import 'export_screen.dart';
 import 'forecast_screen.dart';
+import 'mcp_screen.dart';
 import 'schedules_screen.dart';
 
 /// Settings (canvas: Settings). It lists only what exists today. A later
@@ -33,11 +35,13 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   var _syncBook = SyncBook.off;
+  var _mcpMode = McpMode.off;
 
   @override
   void initState() {
     super.initState();
     _readSyncBook();
+    _readMcpMode();
   }
 
   Future<void> _readSyncBook() async {
@@ -47,11 +51,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() => _syncBook = book);
   }
 
+  Future<void> _readMcpMode() async {
+    final mcp = widget.services.mcp;
+    final budget = widget.engine.state.budget;
+    if (mcp == null || budget == null) return;
+    final book = (await mcp.budget(budget.id))?.book ?? McpBook.off;
+    if (mounted) setState(() => _mcpMode = book.mode);
+  }
+
   Future<void> _open(Widget screen) async {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
     // The App lock and Encrypted sync rows' values may have changed.
     await _readSyncBook();
+    await _readMcpMode();
     if (mounted) setState(() {});
   }
 
@@ -127,6 +140,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ),
+        if (widget.services.mcp != null)
+          SettingsRow(
+            label: 'AI apps (MCP)',
+            value: _mcpMode.label,
+            onTap: () => _open(
+              McpScreen(engine: widget.engine, services: widget.services),
+            ),
+          ),
       ],
     ),
   ];
