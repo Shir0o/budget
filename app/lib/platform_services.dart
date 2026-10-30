@@ -143,6 +143,19 @@ final class SystemFileSaver implements FileSaver {
       null;
 }
 
+final class SystemFileLoader implements FileLoader {
+  const SystemFileLoader();
+
+  @override
+  Future<Uint8List?> pick({required List<String> extensions}) async {
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: extensions,
+    );
+    return file?.readAsBytes();
+  }
+}
+
 final class LocalAuthenticator implements Authenticator {
   LocalAuthenticator() : _auth = LocalAuthentication();
 

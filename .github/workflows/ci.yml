@@ -37,6 +37,10 @@ jobs:
         working-directory: packages/budget_core
         run: dart test
 
+      - name: Test budget_migration
+        working-directory: packages/budget_migration
+        run: dart test
+
       - name: Test budget_simplefin
         working-directory: packages/budget_simplefin
         run: dart test

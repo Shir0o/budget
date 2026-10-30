@@ -30,6 +30,7 @@ export 'src/event_log.dart';
 export 'src/export.dart';
 export 'src/history.dart';
 export 'src/hlc.dart';
+export 'src/import_batch.dart';
 export 'src/money.dart';
 export 'src/redaction.dart';
 export 'src/review.dart';

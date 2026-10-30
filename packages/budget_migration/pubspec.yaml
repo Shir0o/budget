@@ -1,0 +1,16 @@
+name: budget_migration
+description: Reads an Actual Budget export and turns it into one import.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  archive: ^4.0.0
+  budget_core: any
+  sqlite3: ^3.8.0
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.26.0

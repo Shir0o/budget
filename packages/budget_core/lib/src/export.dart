@@ -162,6 +162,7 @@ String stateJson(BudgetState state, {required CalendarMonth month}) {
           'memo': t.memo,
           'cleared': t.cleared.name,
           'amountCents': t.amount.cents,
+          'importedCategory': ?t.importedCategory,
           'lines': [
             for (final line in t.lines)
               {

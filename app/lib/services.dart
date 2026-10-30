@@ -56,6 +56,12 @@ abstract interface class FileSaver {
   });
 }
 
+/// Opens the phone's file dialog and hands back what the person picked.
+abstract interface class FileLoader {
+  /// Returns the file's bytes, or null if they backed out.
+  Future<Uint8List?> pick({required List<String> extensions});
+}
+
 /// The phone's fingerprint or screen-lock check.
 abstract interface class Authenticator {
   /// Whether this phone has a fingerprint or screen lock to check against.
@@ -77,11 +83,13 @@ final class AppServices {
     required this.prefs,
     required this.saver,
     required this.authenticator,
+    FileLoader? loader,
     SimpleFinTransport? simpleFin,
     DriveGateway? drive,
     this.mcp,
     bool appLockEnabled = false,
   }) : appLockEnabled = ValueNotifier(appLockEnabled),
+       loader = loader ?? InMemoryFileLoader(),
        simpleFin = SimpleFinClient(simpleFin ?? FakeSimpleFinTransport()),
        drive = drive ?? InMemoryDrive();
 
@@ -97,6 +105,7 @@ final class AppServices {
   final BudgetKeyStore keys;
   final DevicePrefs prefs;
   final FileSaver saver;
+  final FileLoader loader;
   final Authenticator authenticator;
 
   /// The SimpleFIN Bridge client. Tests answer through their own
@@ -237,6 +246,21 @@ final class InMemoryFileSaver implements FileSaver {
   }) async {
     if (accepts) saved[fileName] = bytes;
     return accepts;
+  }
+}
+
+/// Acts as the file dialog: hands back [next] once.
+final class InMemoryFileLoader implements FileLoader {
+  Uint8List? next;
+
+  var picks = 0;
+
+  @override
+  Future<Uint8List?> pick({required List<String> extensions}) async {
+    picks++;
+    final bytes = next;
+    next = null;
+    return bytes;
   }
 }
 
