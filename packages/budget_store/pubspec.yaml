@@ -1,0 +1,15 @@
+name: budget_store
+description: SQLCipher-encrypted event store for budget_core.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  budget_core: any
+  sqlite3: ^3.8.0
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.26.0
