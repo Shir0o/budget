@@ -28,6 +28,26 @@ final class CivilDate implements Comparable<CivilDate> {
       '${month.toString().padLeft(2, '0')}-'
       '${day.toString().padLeft(2, '0')}';
 
+  /// [days] later, across month and year ends. Negative goes back.
+  CivilDate addDays(int days) {
+    final moved = DateTime.utc(year, month, day).add(Duration(days: days));
+    return CivilDate(moved.year, moved.month, moved.day);
+  }
+
+  /// [months] later, on the same day or the month's last day. Negative goes
+  /// back.
+  CivilDate addMonths(int months) {
+    final index = year * 12 + month - 1 + months;
+    final moved = CalendarMonth(index ~/ 12, index % 12 + 1);
+    final last = moved.next;
+    final lastDay = DateTime.utc(
+      last.year,
+      last.month,
+      1,
+    ).subtract(const Duration(days: 1)).day;
+    return CivilDate(moved.year, moved.month, day > lastDay ? lastDay : day);
+  }
+
   @override
   int compareTo(CivilDate other) => toIso().compareTo(other.toIso());
 

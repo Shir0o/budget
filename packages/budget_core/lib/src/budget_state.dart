@@ -6,6 +6,8 @@ import 'target.dart';
 
 part 'automation.dart';
 part 'budget_math.dart';
+part 'forecast.dart';
+part 'schedules.dart';
 
 /// The kinds of account (ticket 07). All but [tracking] are budget
 /// accounts.
@@ -285,6 +287,12 @@ final class BudgetState {
   final _targets = <String, Target>{};
   final _modes = <String, AutomationMode>{};
   var _priority = <String>[];
+
+  /// Scheduled Transactions (ticket 10).
+  final _schedules = <String, Schedule>{};
+
+  /// Deleted ones, kept so a revert can restore them (ticket 11).
+  final _removedSchedules = <String, Schedule>{};
 
   late final _Ledger _ledger;
 
@@ -590,6 +598,38 @@ final class BudgetState {
             : _modes[id] = AutomationMode.values.byName(mode);
       case EventType.prioritySet:
         _priority = (p['categoryIds'] as List).cast<String>();
+      case EventType.scheduleCreated:
+        final id = p['scheduleId'] as String;
+        if (_removedSchedules.containsKey(id)) return;
+        _schedules[id] = Schedule.fromJson(id, p);
+      case EventType.scheduleFieldsSet:
+        final id = p['scheduleId'] as String;
+        final schedule = _schedules[id];
+        if (schedule == null) return;
+        final fields = (p['fields'] as Map).cast<String, Object?>();
+        _schedules[id] = schedule._copyWith(
+          accountId: fields['accountId'] as String?,
+          payee: fields['payee'] as String?,
+          memo: fields['memo'] as String?,
+          amount: switch (fields['amountCents']) {
+            final int cents => Money(cents),
+            _ => null,
+          },
+          category: fields['category'] as String?,
+          every: fields['every'] as int?,
+          interval: switch (fields['interval']) {
+            final String name => TargetInterval.values.byName(name),
+            _ => null,
+          },
+          nextDue: switch (fields['nextDue']) {
+            final String iso => CivilDate.parse(iso),
+            _ => null,
+          },
+        );
+      case EventType.scheduleDeleted:
+        _move(_schedules, _removedSchedules, p['scheduleId'] as String);
+      case EventType.scheduleRestored:
+        _move(_removedSchedules, _schedules, p['scheduleId'] as String);
     }
   }
 

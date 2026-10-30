@@ -5,11 +5,11 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'target_parts.dart';
 
-enum _Kind { repeating, byDate, keepAtLeast }
+enum _Kind { repeating, byDate, keepAtLeast, schedule }
 
 /// Sets or changes a Category's Target (canvas: SetTarget), showing what it
-/// needs in [month] as you type. Driven by schedule arrives with scheduled
-/// transactions (ticket 10).
+/// needs in [month] as you type. Driven by schedule sums the Category's
+/// Scheduled Transactions, so it has no amount of its own.
 class SetTargetScreen extends StatefulWidget {
   const SetTargetScreen({
     super.key,
@@ -31,9 +31,17 @@ class _SetTargetScreenState extends State<SetTargetScreen> {
   late var _kind = switch (_existing) {
     ByDateTarget() => _Kind.byDate,
     KeepAtLeastTarget() => _Kind.keepAtLeast,
+    DrivenByScheduleTarget() => _Kind.schedule,
     _ => _Kind.repeating,
   };
-  late final _amount = TextEditingController(text: _existing?.amount.format());
+  late final _amount = TextEditingController(
+    text: switch (_existing) {
+      RepeatingTarget(:final amount) ||
+      ByDateTarget(:final amount) ||
+      KeepAtLeastTarget(:final amount) => amount.format(),
+      _ => '',
+    },
+  );
   late final _every = TextEditingController(
     text:
         '${switch (_existing) {
@@ -69,6 +77,7 @@ class _SetTargetScreenState extends State<SetTargetScreen> {
 
   /// The Target as entered, or null while a field isn't valid yet.
   Target? get _draft {
+    if (_kind == _Kind.schedule) return const DrivenByScheduleTarget();
     final amount = Money.tryParse(_amount.text);
     if (amount == null || !amount.isPositive) return null;
     return switch (_kind) {
@@ -83,6 +92,7 @@ class _SetTargetScreenState extends State<SetTargetScreen> {
       },
       _Kind.byDate => ByDateTarget(amount: amount, date: _date),
       _Kind.keepAtLeast => KeepAtLeastTarget(amount: amount),
+      _Kind.schedule => const DrivenByScheduleTarget(),
     };
   }
 
@@ -123,6 +133,7 @@ class _SetTargetScreenState extends State<SetTargetScreen> {
       widget.categoryId,
       widget.month,
     );
+    final scheduled = state.schedulesFor(widget.categoryId).length;
 
     return Scaffold(
       body: SafeArea(
@@ -190,6 +201,11 @@ class _SetTargetScreenState extends State<SetTargetScreen> {
                             'Keep at least',
                             'Top up to a floor every month',
                           ),
+                          (
+                            _Kind.schedule,
+                            'Driven by schedule',
+                            'Sum this Category’s scheduled transactions',
+                          ),
                         ].indexed)
                           _KindRow(
                             title: title,
@@ -207,67 +223,75 @@ class _SetTargetScreenState extends State<SetTargetScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       spacing: 10,
                       children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          spacing: 10,
-                          children: [
-                            Expanded(
-                              child: LabeledField(
-                                label: 'Amount',
-                                child: TextField(
-                                  key: const ValueKey('target-amount'),
-                                  controller: _amount,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  style: amountStyle(),
-                                  decoration: InputDecoration(
-                                    hintText: '0.00',
-                                    errorText: _amountError,
-                                  ),
-                                  onChanged: (_) => setState(() {}),
-                                ),
-                              ),
-                            ),
-                            if (_kind == _Kind.repeating)
+                        if (_kind == _Kind.schedule)
+                          const Hint(
+                            'A Driven-by-schedule Target has no amount of '
+                            'its own: it needs whatever the scheduled '
+                            'transactions in this Category add up to.',
+                          )
+                        else
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            spacing: 10,
+                            children: [
                               Expanded(
                                 child: LabeledField(
-                                  label: 'Every',
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    spacing: 6,
-                                    children: [
-                                      SizedBox(
-                                        width: 52,
-                                        child: TextField(
-                                          key: const ValueKey('target-every'),
-                                          controller: _every,
-                                          keyboardType: TextInputType.number,
-                                          style: amountStyle(),
-                                          decoration: InputDecoration(
-                                            errorText: _everyError,
-                                          ),
-                                          onChanged: (_) => setState(() {}),
+                                  label: 'Amount',
+                                  child: TextField(
+                                    key: const ValueKey('target-amount'),
+                                    controller: _amount,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
                                         ),
-                                      ),
-                                      Expanded(
-                                        child: _IntervalPicker(
-                                          value: _interval,
-                                          count: _everyValue ?? 2,
-                                          onChanged: (interval) => setState(
-                                            () => _interval = interval,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                    style: amountStyle(),
+                                    decoration: InputDecoration(
+                                      hintText: '0.00',
+                                      errorText: _amountError,
+                                    ),
+                                    onChanged: (_) => setState(() {}),
                                   ),
                                 ),
                               ),
-                          ],
-                        ),
-                        if (_kind != _Kind.keepAtLeast)
+                              if (_kind == _Kind.repeating)
+                                Expanded(
+                                  child: LabeledField(
+                                    label: 'Every',
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      spacing: 6,
+                                      children: [
+                                        SizedBox(
+                                          width: 52,
+                                          child: TextField(
+                                            key: const ValueKey('target-every'),
+                                            controller: _every,
+                                            keyboardType: TextInputType.number,
+                                            style: amountStyle(),
+                                            decoration: InputDecoration(
+                                              errorText: _everyError,
+                                            ),
+                                            onChanged: (_) => setState(() {}),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: IntervalPicker(
+                                            value: _interval,
+                                            count: _everyValue ?? 2,
+                                            onChanged: (interval) => setState(
+                                              () => _interval = interval,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        if (_kind != _Kind.keepAtLeast &&
+                            _kind != _Kind.schedule)
                           LabeledField(
                             label: _kind == _Kind.repeating ? 'Next due' : 'By',
                             child: DateField(
@@ -306,6 +330,7 @@ class _SetTargetScreenState extends State<SetTargetScreen> {
                                     draft,
                                     widget.month,
                                     before,
+                                    scheduled: scheduled,
                                   ),
                                   style: const TextStyle(
                                     fontSize: 12,
@@ -316,7 +341,13 @@ class _SetTargetScreenState extends State<SetTargetScreen> {
                             ),
                           ),
                           Text(
-                            draft.needed(widget.month, before).format(),
+                            state
+                                .neededFor(
+                                  widget.categoryId,
+                                  draft,
+                                  widget.month,
+                                )
+                                .format(),
                             style: amountStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w600,
@@ -404,34 +435,5 @@ class _KindRow extends StatelessWidget {
         ),
       ),
     ),
-  );
-}
-
-class _IntervalPicker extends StatelessWidget {
-  const _IntervalPicker({
-    required this.value,
-    required this.count,
-    required this.onChanged,
-  });
-
-  final TargetInterval value;
-  final int count;
-  final ValueChanged<TargetInterval> onChanged;
-
-  @override
-  Widget build(BuildContext context) => DropdownButtonFormField<TargetInterval>(
-    key: const ValueKey('target-interval'),
-    initialValue: value,
-    isExpanded: true,
-    items: [
-      for (final interval in TargetInterval.values)
-        DropdownMenuItem(
-          value: interval,
-          child: Text(intervalName(interval, count: count)),
-        ),
-    ],
-    onChanged: (interval) {
-      if (interval != null) onChanged(interval);
-    },
   );
 }

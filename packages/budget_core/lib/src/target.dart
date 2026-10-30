@@ -1,45 +1,47 @@
 import 'civil_date.dart';
 import 'money.dart';
 
-// Targets and Automation Mode (ticket 08). The Driven-by-schedule Target
-// arrives with scheduled transactions (ticket 10).
+// Targets and Automation Mode (ticket 08), including the Driven-by-schedule
+// Target (ticket 10).
 
 /// Whether automation leaves a Category alone, proposes Assignments for it,
 /// or makes them. Suggest is the default; Card Payment Categories default
 /// to off.
 enum AutomationMode { off, suggest, auto }
 
-/// How often a [RepeatingTarget] comes due.
+/// How often a [RepeatingTarget] or a Scheduled Transaction comes due.
 enum TargetInterval { days, weeks, months, years }
 
 /// The amount a Category should reach. At most one per Category.
 sealed class Target {
-  const Target(this.amount);
+  const Target();
 
   /// Restores a Target from its stored form, [toJson].
   static Target fromJson(Map<String, Object?> json) {
-    final amount = Money(json['amountCents'] as int);
+    Money amount() => Money(json['amountCents'] as int);
     return switch (json['kind']) {
       'repeating' => RepeatingTarget(
-        amount: amount,
+        amount: amount(),
         every: json['every'] as int,
         interval: TargetInterval.values.byName(json['interval'] as String),
         nextDue: CivilDate.parse(json['nextDue'] as String),
       ),
       'byDate' => ByDateTarget(
-        amount: amount,
+        amount: amount(),
         date: CivilDate.parse(json['date'] as String),
       ),
-      'keepAtLeast' => KeepAtLeastTarget(amount: amount),
+      'keepAtLeast' => KeepAtLeastTarget(amount: amount()),
+      'schedule' => const DrivenByScheduleTarget(),
       final kind => throw FormatException('Unknown Target kind', kind),
     };
   }
 
-  /// Positive.
-  final Money amount;
-
   /// What the Category needs in [month], given its Available before
   /// assigning (Carry + Activity). Never negative.
+  ///
+  /// A [DrivenByScheduleTarget] has nothing of its own to answer with: its
+  /// sum needs the Category's Scheduled Transactions, so
+  /// `BudgetState.needed` works it out.
   Money needed(CalendarMonth month, Money availableBeforeAssigning);
 
   Map<String, Object?> toJson();
@@ -48,11 +50,14 @@ sealed class Target {
 /// [amount] every [every] [interval]s, next due on [nextDue].
 final class RepeatingTarget extends Target {
   const RepeatingTarget({
-    required Money amount,
+    required this.amount,
     required this.every,
     required this.interval,
     required this.nextDue,
-  }) : super(amount);
+  });
+
+  /// Positive.
+  final Money amount;
 
   /// 1 or more.
   final int every;
@@ -70,7 +75,7 @@ final class RepeatingTarget extends Target {
     var k = 0;
     var due = nextDue;
     while (CalendarMonth.of(due).compareTo(month) < 0) {
-      due = _addMonths(nextDue, ++k * step);
+      due = nextDue.addMonths(++k * step);
     }
     return due;
   }
@@ -109,9 +114,10 @@ final class RepeatingTarget extends Target {
 
 /// Save up [amount] by [date].
 final class ByDateTarget extends Target {
-  const ByDateTarget({required Money amount, required this.date})
-    : super(amount);
+  const ByDateTarget({required this.amount, required this.date});
 
+  /// Positive.
+  final Money amount;
   final CivilDate date;
 
   /// Whether [month] is after [date]'s month, when the Target is complete.
@@ -139,7 +145,10 @@ final class ByDateTarget extends Target {
 
 /// Top up to [amount] every month.
 final class KeepAtLeastTarget extends Target {
-  const KeepAtLeastTarget({required Money amount}) : super(amount);
+  const KeepAtLeastTarget({required this.amount});
+
+  /// Positive.
+  final Money amount;
 
   /// max(0, A − Available before assigning).
   @override
@@ -151,6 +160,22 @@ final class KeepAtLeastTarget extends Target {
     'kind': 'keepAtLeast',
     'amountCents': amount.cents,
   };
+}
+
+/// What the Category's Scheduled Transactions imply, summed (ticket 10). It
+/// has no amount and no date of its own: each outflow schedule is measured
+/// as the [RepeatingTarget] it stands for.
+final class DrivenByScheduleTarget extends Target {
+  const DrivenByScheduleTarget();
+
+  /// Zero: the sum is over the Category's Scheduled Transactions, which a
+  /// Target can't see. `BudgetState.needed` answers for it.
+  @override
+  Money needed(CalendarMonth month, Money availableBeforeAssigning) =>
+      Money.zero;
+
+  @override
+  Map<String, Object?> toJson() => {'kind': 'schedule'};
 }
 
 /// How many months from [from] to [to], both included. Zero when [to] is
@@ -180,12 +205,4 @@ CivilDate _lastDay(CalendarMonth month) {
     1,
   ).subtract(const Duration(days: 1));
   return CivilDate(day.year, day.month, day.day);
-}
-
-/// [date] plus [months], on the same day or the month's last day.
-CivilDate _addMonths(CivilDate date, int months) {
-  final index = date.year * 12 + date.month - 1 + months;
-  final month = CalendarMonth(index ~/ 12, index % 12 + 1);
-  final last = _lastDay(month).day;
-  return CivilDate(month.year, month.month, date.day > last ? last : date.day);
 }
