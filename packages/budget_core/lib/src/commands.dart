@@ -5,6 +5,7 @@ import 'event.dart';
 import 'history.dart';
 import 'import_batch.dart';
 import 'money.dart';
+import 'redact_field.dart';
 import 'review.dart';
 import 'target.dart';
 
@@ -325,6 +326,17 @@ final class RestoreToDate extends Command {
   final CivilDate date;
 }
 
+/// Replaces each [targets] value with `[redacted]` in every past Event and
+/// snapshot, then appends one [EventType.redacted] Event recording who,
+/// when and which Events, but never the value (ticket 11). The one
+/// permitted rewrite of the log, so it is not revertable and it syncs to
+/// the other device. Only a person may do it.
+final class RedactField extends Command {
+  const RedactField({required this.targets});
+
+  final List<RedactTarget> targets;
+}
+
 // Targets and automation (ticket 08).
 
 /// Gives [categoryId] [target], replacing any it had.
@@ -635,6 +647,10 @@ enum Rejection {
   /// [ReviewLine] from bank sync, automation, an import, MCP or a revert.
   /// Only a person marks a line Reviewed (ADR 0003).
   personRequired,
+
+  /// [RedactField] of an entity or field this version can't rewrite, or
+  /// with no targets.
+  cannotRedact,
 
   /// [ReviewLine] of a line id the transaction doesn't have.
   unknownLine,

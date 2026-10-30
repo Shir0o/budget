@@ -132,6 +132,40 @@ final class SyncClient {
       ];
       var uploaded = book.uploadedEvents.clamp(0, own.length);
       var seq = book.uploadedSeq;
+      var snapshotted = book.snapshottedEvents;
+
+      // A redaction rewrites Events that may already be in Drive, so this
+      // device's own segments and snapshot still hold the old value.
+      // Publish one fresh snapshot of the rewritten log and drop what came
+      // before (ticket 11). Every device does this in its own folder.
+      final redacted = {
+        for (final event in engine.events)
+          if (event.type == EventType.redacted &&
+              !book.rewrittenFor.contains(event.id))
+            event.id,
+      };
+      if (redacted.isNotEmpty && own.isNotEmpty) {
+        for (final file in await drive.list(myFolder)) {
+          if (isEventFile(file.name)) await drive.delete(file.id);
+        }
+        final snapshot = Snapshot(
+          budgetId: budgetId,
+          deviceId: deviceId,
+          covered: own.last.hlc,
+          events: own,
+        );
+        await _write(
+          budgetId,
+          deviceId,
+          myFolder,
+          snapshot.name,
+          snapshot.toJson(),
+          key,
+        );
+        uploaded = own.length;
+        snapshotted = own.length;
+      }
+
       final fresh = own.skip(uploaded).toList();
       for (var start = 0; start < fresh.length; start += Segment.maxEvents) {
         final events = fresh.sublist(
@@ -157,7 +191,6 @@ final class SyncClient {
 
       // A snapshot compacts this device's own Events, so a second device
       // starts from one file.
-      var snapshotted = book.snapshottedEvents;
       if (snapshotEvery > 0 &&
           own.length >= snapshotEvery &&
           own.length - snapshotted >= snapshotEvery) {
@@ -198,6 +231,7 @@ final class SyncClient {
         snapshottedEvents: snapshotted,
         devices: deviceFolders.length,
         lastSync: DateTime.now(),
+        rewrittenFor: {...book.rewrittenFor, ...redacted},
       );
       return SyncOutcome(
         book: after,
@@ -367,6 +401,7 @@ final class SyncClient {
           // New segments start at 1 again, beside the snapshot.
           devices: deviceFolders.isEmpty ? 1 : deviceFolders.length,
           lastSync: DateTime.now(),
+          rewrittenFor: book.rewrittenFor,
         ),
         snapshotEvents: events.length,
         deletedFiles: deleted,

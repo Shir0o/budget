@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'as_of_date_screen.dart';
+import 'redact_screen.dart';
 import 'revert_conflict_sheet.dart';
 
 /// Change History (canvas: History): every change, newest first and
@@ -149,6 +150,16 @@ class EntityHistoryScreen extends StatefulWidget {
 }
 
 class _EntityHistoryScreenState extends State<EntityHistoryScreen> {
+  Future<void> _redact() async {
+    final redacted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) =>
+            RedactScreen(engine: widget.engine, entity: widget.entity),
+      ),
+    );
+    if (redacted == true && mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(
@@ -190,6 +201,24 @@ class _EntityHistoryScreenState extends State<EntityHistoryScreen> {
                     ],
                   ),
                 ),
+                if (redactCandidates(
+                  widget.engine.state,
+                  widget.entity,
+                ).isNotEmpty)
+                  TextButton(
+                    onPressed: _redact,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      foregroundColor: Palette.problemText,
+                      textStyle: const TextStyle(
+                        fontFamily: sansFamily,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    child: const Text('Redact a field'),
+                  ),
               ],
             ),
           ),
@@ -243,6 +272,23 @@ class HistoryEntries extends StatelessWidget {
     onChanged();
   }
 
+  Future<void> _redact(BuildContext context, EntityRef entity) async {
+    final redacted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => RedactScreen(engine: engine, entity: entity),
+      ),
+    );
+    if (redacted == true) onChanged();
+  }
+
+  /// The one entity of [entry] that still has a value worth redacting, or
+  /// null when the entry touches several and the choice is the person's.
+  EntityRef? _redactEntity(HistoryEntry entry) {
+    final entity = entry.entity;
+    if (entity == null) return null;
+    return redactCandidates(engine.state, entity).isEmpty ? null : entity;
+  }
+
   @override
   Widget build(BuildContext context) {
     final history = engine.history;
@@ -274,11 +320,13 @@ class HistoryEntries extends StatelessWidget {
           ),
         );
       }
+      final redact = _redactEntity(entry);
       children.add(
         _EntryCard(
           entry: entry,
           history: history,
           onRevert: () => _revert(context, entry),
+          onRedact: redact == null ? null : () => _redact(context, redact),
         ),
       );
     }
@@ -407,11 +455,15 @@ class _EntryCard extends StatelessWidget {
     required this.entry,
     required this.history,
     required this.onRevert,
+    required this.onRedact,
   });
 
   final HistoryEntry entry;
   final ChangeHistory history;
   final VoidCallback onRevert;
+
+  /// Null when the entry's entity has no value left to redact.
+  final VoidCallback? onRedact;
 
   @override
   Widget build(BuildContext context) {
@@ -448,27 +500,43 @@ class _EntryCard extends StatelessWidget {
           ),
           Text(entry.summary, style: const TextStyle(fontSize: 14)),
           for (final change in entry.changes) _ChangeLine(change),
-          if (entry.revertedBy != null)
-            const Align(
-              alignment: Alignment.centerRight,
-              child: Hint('Reverted'),
-            )
-          else if (entry.canRevert)
-            Align(
-              alignment: Alignment.centerRight,
-              child: OutlinedButton(
-                onPressed: onRevert,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 44),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  textStyle: const TextStyle(
-                    fontFamily: sansFamily,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+          if (onRedact != null || entry.revertedBy != null || entry.canRevert)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              spacing: 6,
+              children: [
+                if (onRedact != null)
+                  TextButton(
+                    onPressed: onRedact,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      foregroundColor: Palette.problemText,
+                      textStyle: const TextStyle(
+                        fontFamily: sansFamily,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    child: const Text('Redact'),
                   ),
-                ),
-                child: Text(action),
-              ),
+                if (entry.revertedBy != null)
+                  const Hint('Reverted')
+                else if (entry.canRevert)
+                  OutlinedButton(
+                    onPressed: onRevert,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      textStyle: const TextStyle(
+                        fontFamily: sansFamily,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    child: Text(action),
+                  ),
+              ],
             ),
         ],
       ),

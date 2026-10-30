@@ -80,5 +80,22 @@ final class SqlCipherEventLog implements EventLog {
     }
   }
 
+  @override
+  void rewrite(List<Event> events) {
+    final update = _db.prepare('UPDATE events SET body = ? WHERE id = ?');
+    _db.execute('BEGIN');
+    try {
+      for (final event in events) {
+        update.execute([jsonEncode(event.toJson()), event.id]);
+      }
+      _db.execute('COMMIT');
+    } catch (_) {
+      _db.execute('ROLLBACK');
+      rethrow;
+    } finally {
+      update.close();
+    }
+  }
+
   void close() => _db.close();
 }
