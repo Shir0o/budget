@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../widgets.dart';
+import 'as_of_date_screen.dart';
 import 'revert_conflict_sheet.dart';
 
 /// Change History (canvas: History): every change, newest first and
-/// grouped by day, with Actor filter chips. "Go back to a date" arrives
-/// with ticket 08.
+/// grouped by day, with Actor filter chips and Go back to a date.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, required this.engine});
 
@@ -28,6 +28,21 @@ const _actorChips = [
 class _HistoryScreenState extends State<HistoryScreen> {
   ActorKind? _actor;
 
+  Future<void> _goBack() async {
+    final now = today();
+    final yesterday = CivilDate.fromDateTime(
+      DateTime(now.year, now.month, now.day - 1),
+    );
+    final date = await pickDate(context, yesterday);
+    if (date == null || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AsOfDateScreen(engine: widget.engine, date: date),
+      ),
+    );
+    setState(() {}); // A restore may have changed history.
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     bottomNavigationBar: MainNav(
@@ -45,9 +60,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               spacing: 8,
               children: [
-                const Text(
-                  'Change History',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Change History',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _goBack,
+                      icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                      label: const Text('Go back to a date'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 44),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        textStyle: const TextStyle(
+                          fontFamily: sansFamily,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 Wrap(
                   spacing: 6,

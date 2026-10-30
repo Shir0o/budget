@@ -133,6 +133,11 @@ abstract final class EventType {
   /// depended on it. `by` is the Actor who asked for the revert. It changes
   /// no state.
   static const groupReverted = 'GroupReverted';
+
+  /// `{date, by}`: the first Event of a Restore to a date group (ticket 11).
+  /// `date` is the `YYYY-MM-DD` restored to, as of its end, and `by` is the
+  /// Actor who asked. It changes no state.
+  static const restoredToDate = 'RestoredToDate';
 }
 
 /// The `category` value of a transaction line whose money goes to
