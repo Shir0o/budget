@@ -180,8 +180,12 @@ void main() {
       await tester.pumpWidget(BudgetApp(engine: engine, services: services));
       await _openSettings(tester);
 
-      await tester.tap(find.text('Recovery phrase'));
+      await tester.drag(find.byType(ListView).last, const Offset(0, -400));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Recovery phrase'));
+      // The note is a SnackBar; settling would wait for it to time out.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.textContaining('No recovery phrase yet'), findsOneWidget);
       expect(await services.keys.existingKey(engine.state.budget!.id), isNull);
