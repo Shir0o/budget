@@ -34,7 +34,12 @@ final class ToolRequest {
 
   int? integer(String key) => switch (arguments[key]) {
     final int value => value,
-    final num value => value.toInt(),
+    // A whole-number double (JSON may decode 1250.0 so) is fine; a
+    // fraction is refused, never truncated.
+    final double value =>
+      value.isFinite && value == value.truncateToDouble()
+          ? value.toInt()
+          : throw _Refusal('“$key” must be a whole number.'),
     final String value => int.tryParse(value),
     _ => null,
   };

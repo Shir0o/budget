@@ -283,6 +283,78 @@ void main() {
       expect(line.reviewed, isFalse);
     });
 
+    test(
+      'amountCents must be whole cents: 1250.7 is refused, 1250.0 is not',
+      () async {
+        final seed = _Seed();
+        final before = seed.log.readAll().length;
+        for (final name in ['assign', 'create_transaction']) {
+          final refused = await _call(seed, name, {
+            ..._examples(seed)[name]!,
+            'amountCents': 1250.7,
+          });
+          expect(refused.isError, isTrue, reason: name);
+          expect(refused.content['error'], contains('whole'), reason: name);
+        }
+        final lineRefused = await _call(seed, 'create_transaction', {
+          ..._examples(seed)['create_transaction']!,
+          'lines': [
+            {'amountCents': -1299.5, 'categoryId': seed.groceries},
+          ],
+        });
+        expect(lineRefused.isError, isTrue);
+        expect(seed.log.readAll(), hasLength(before));
+
+        final whole = await _call(seed, 'assign', {
+          'categoryId': seed.dining,
+          'month': '2026-11',
+          'amountCents': 1250.0,
+        });
+        expect(whole.isError, isFalse, reason: whole.text);
+        expect(
+          seed.state.assigned(seed.dining, CalendarMonth(2026, 11)).cents,
+          1250,
+        );
+      },
+    );
+
+    test(
+      'MCP cannot edit a Reconciled transaction or set Reconciled',
+      () async {
+        final seed = _Seed();
+        final person = BudgetEngine(
+          log: seed.log,
+          deviceId: 'test-device',
+          actor: Actor.userAndroid,
+        );
+        expect(
+          person.execute(
+            EditTransaction(
+              transactionId: seed.reviewed,
+              cleared: ClearedStatus.reconciled,
+            ),
+          ),
+          isA<Accepted>(),
+        );
+        final before = seed.log.readAll().length;
+        final edit = await _call(seed, 'update_transaction', {
+          'transactionId': seed.reviewed,
+          'memo': 'sneaky',
+          'confirmReconciled': true,
+        });
+        expect(edit.isError, isTrue);
+        expect(edit.content['error'], contains('in the app'));
+
+        final set = await _call(seed, 'update_transaction', {
+          'transactionId': seed.unreviewed,
+          'cleared': 'reconciled',
+        });
+        expect(set.isError, isTrue);
+        expect(set.content['error'], contains('in the app'));
+        expect(seed.log.readAll(), hasLength(before));
+      },
+    );
+
     test('a group survives a revert and shows in Change History', () async {
       final seed = _Seed();
       final result = await _call(seed, 'assign', {
