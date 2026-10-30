@@ -88,6 +88,25 @@ List<SensitiveNumber> findSensitiveNumbers(String text) {
 bool containsSensitiveNumber(String text) =>
     findSensitiveNumbers(text).isNotEmpty;
 
+/// [text] with each of its sensitive numbers cut to its last four digits,
+/// such as `Card ••••1111`, so a payee or bank description never carries a
+/// full number into the log (ticket 09).
+String maskSensitiveNumbers(String text) {
+  final found = findSensitiveNumbers(text);
+  if (found.isEmpty) return text;
+  final buffer = StringBuffer();
+  var at = 0;
+  for (final number in found) {
+    final digits = number.digits;
+    buffer
+      ..write(text.substring(at, number.start))
+      ..write('••••${digits.substring(digits.length - 4)}');
+    at = number.end;
+  }
+  buffer.write(text.substring(at));
+  return buffer.toString();
+}
+
 bool _luhn(String digits) {
   var sum = 0;
   for (var i = 0; i < digits.length; i++) {

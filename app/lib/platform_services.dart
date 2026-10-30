@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:budget_core/budget_core.dart';
+import 'package:budget_simplefin/budget_simplefin.dart';
 import 'package:budget_store/budget_store.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -37,6 +39,7 @@ final class SecureDevicePrefs implements DevicePrefs {
   static const _lastBackup = 'last-backup';
   static const _budgetIds = 'budget-ids';
   static const _lastBudgetId = 'last-budget-id';
+  static const _simpleFin = 'simplefin-book';
 
   @override
   Future<bool> readAppLockEnabled() async =>
@@ -82,6 +85,19 @@ final class SecureDevicePrefs implements DevicePrefs {
   @override
   Future<void> writeAutomationMonth(String budgetId, CalendarMonth month) =>
       _storage.write(key: 'automation-month:$budgetId', value: month.toIso());
+
+  @override
+  Future<SimpleFinBook> readSimpleFinBook() async {
+    final json = await _storage.read(key: _simpleFin);
+    if (json == null) return const SimpleFinBook();
+    return SimpleFinBook.fromJson(
+      (jsonDecode(json) as Map).cast<String, Object?>(),
+    );
+  }
+
+  @override
+  Future<void> writeSimpleFinBook(SimpleFinBook book) =>
+      _storage.write(key: _simpleFin, value: jsonEncode(book.toJson()));
 }
 
 final class SystemFileSaver implements FileSaver {

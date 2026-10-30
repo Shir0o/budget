@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   budget_core: any
+  budget_simplefin: any
   budget_store: any
   flutter_secure_storage: ^11.2.0
   path_provider: ^2.1.6

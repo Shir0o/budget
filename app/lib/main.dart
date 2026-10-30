@@ -1,4 +1,5 @@
 import 'package:budget_core/budget_core.dart';
+import 'package:budget_simplefin/budget_simplefin.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -34,6 +35,7 @@ Future<void> main() async {
     prefs: prefs,
     saver: const SystemFileSaver(),
     authenticator: LocalAuthenticator(),
+    simpleFin: const HttpSimpleFinTransport(),
     appLockEnabled: await prefs.readAppLockEnabled(),
   );
   runApp(BudgetApp(library: library, services: services));
