@@ -7,6 +7,7 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
 const _key = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+final _nov = CalendarMonth(2026, 11);
 
 void main() {
   late Directory dir;
@@ -55,8 +56,8 @@ void main() {
     expect(reopened.readAll().map((e) => jsonEncode(e.toJson())), eventsBefore);
     expect(after.budget, before.budget);
     expect(after.accounts, before.accounts);
-    expect(after.readyToAssign, const Money(721055));
-    expect(after.readyToAssign, before.readyToAssign);
+    expect(after.readyToAssign(_nov), const Money(721055));
+    expect(after.readyToAssign(_nov), before.readyToAssign(_nov));
   });
 
   test('the file is encrypted and needs the key', () {

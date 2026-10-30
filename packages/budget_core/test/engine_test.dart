@@ -4,6 +4,7 @@ import 'package:budget_core/budget_core.dart';
 import 'package:test/test.dart';
 
 final _nov1 = CivilDate(2026, 11, 1);
+final _nov = CalendarMonth(2026, 11);
 
 BudgetEngine _engine({EventLog? log, int Function()? nowMs}) => BudgetEngine(
   log: log ?? InMemoryEventLog(),
@@ -49,7 +50,7 @@ void main() {
       expect(events.single.type, EventType.budgetCreated);
       expect(engine.state.budget?.name, 'Home');
       expect(engine.state.budget?.id, events.single.budgetId);
-      expect(engine.state.readyToAssign, Money.zero);
+      expect(engine.state.readyToAssign(_nov), Money.zero);
     });
 
     test('rejects a blank name and a second budget', () {
@@ -96,13 +97,13 @@ void main() {
       expect(starting.payee, 'Starting Balance');
       expect(starting.date, _nov1);
       expect(starting.amount, const Money(421055));
-      expect(engine.state.readyToAssign, const Money(421055));
+      expect(engine.state.readyToAssign(_nov), const Money(421055));
     });
 
     test('an overdrawn starting balance lowers Ready to Assign', () {
       final engine = _engine();
       _withChecking(engine, balance: const Money(-2500));
-      expect(engine.state.readyToAssign, const Money(-2500));
+      expect(engine.state.readyToAssign(_nov), const Money(-2500));
     });
 
     test('is rejected before a budget exists or without a name', () {
@@ -150,7 +151,7 @@ void main() {
         ),
       );
 
-      expect(engine.state.readyToAssign, const Money(341200));
+      expect(engine.state.readyToAssign(_nov), const Money(341200));
       final paycheck = engine.state.transactions.last;
       expect(paycheck.payee, 'Employer');
       expect(paycheck.lines.single.category, readyToAssignCategory);
@@ -278,7 +279,7 @@ void main() {
     final replayed = BudgetState.replay(shuffled);
     expect(replayed.budget, engine.state.budget);
     expect(replayed.accounts, engine.state.accounts);
-    expect(replayed.readyToAssign, const Money(5700));
+    expect(replayed.readyToAssign(_nov), const Money(5700));
   });
 }
 

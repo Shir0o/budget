@@ -124,8 +124,94 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
           payee: command.payee.trim(),
         ),
       ]);
+
+    case CreateCategoryGroup(:final name):
+      if (name.trim().isEmpty) return const Rejected(Rejection.nameRequired);
+      return Accepted([
+        stamp.event(EventType.categoryGroupCreated, {
+          'categoryGroupId': newId(),
+          'name': name.trim(),
+        }),
+      ]);
+
+    case CreateCategory(:final groupId, :final name):
+      if (state.categoryGroup(groupId) == null) {
+        return const Rejected(Rejection.unknownCategoryGroup);
+      }
+      if (name.trim().isEmpty) return const Rejected(Rejection.nameRequired);
+      return Accepted([
+        stamp.event(EventType.categoryCreated, {
+          'categoryId': newId(),
+          'categoryGroupId': groupId,
+          'name': name.trim(),
+        }),
+      ]);
+
+    case SetAssignment(:final categoryId, :final month, :final amount):
+      if (_checkActive(state, categoryId) case final rejected?) return rejected;
+      final delta = amount - state.assigned(categoryId, month);
+      if (delta == Money.zero) return const Rejected(Rejection.noChange);
+      return Accepted([_assignment(stamp, categoryId, month, delta)]);
+
+    case MoveMoney(
+      :final fromCategoryId,
+      :final toCategoryId,
+      :final month,
+      :final amount,
+    ):
+      if (_checkActive(state, fromCategoryId) case final rejected?) {
+        return rejected;
+      }
+      final toReadyToAssign = toCategoryId == readyToAssignCategory;
+      if (!toReadyToAssign) {
+        if (_checkActive(state, toCategoryId) case final rejected?) {
+          return rejected;
+        }
+      }
+      if (fromCategoryId == toCategoryId) {
+        return const Rejected(Rejection.sameCategory);
+      }
+      if (!amount.isPositive) {
+        return const Rejected(Rejection.amountMustBePositive);
+      }
+      return Accepted([
+        _assignment(stamp, fromCategoryId, month, -amount),
+        if (!toReadyToAssign) _assignment(stamp, toCategoryId, month, amount),
+      ]);
+
+    case ArchiveCategory(:final categoryId, :final month):
+      if (_checkActive(state, categoryId) case final rejected?) return rejected;
+      // Available rolls over, so check the latest month that has money in
+      // it, which may be after [month] when assigning ahead.
+      final last = state.lastActiveMonth(categoryId);
+      final checked = last != null && last.compareTo(month) > 0 ? last : month;
+      if (state.available(categoryId, checked) != Money.zero) {
+        return const Rejected(Rejection.categoryHasBalance);
+      }
+      return Accepted([
+        stamp.event(EventType.categoryArchived, {'categoryId': categoryId}),
+      ]);
   }
 }
+
+/// Rejects a Category that doesn't exist or is archived.
+Rejected? _checkActive(BudgetState state, String categoryId) {
+  final category = state.category(categoryId);
+  if (category == null) return const Rejected(Rejection.unknownCategory);
+  if (category.archived) return const Rejected(Rejection.categoryArchived);
+  return null;
+}
+
+Event _assignment(
+  _Stamp stamp,
+  String categoryId,
+  CalendarMonth month,
+  Money delta,
+) => stamp.event(EventType.assignmentChanged, {
+  'category': categoryId,
+  'month': month.toIso(),
+  'deltaCents': delta.cents,
+});
 
 /// A one-line transaction whose money goes to Ready to Assign.
 Event _income(
