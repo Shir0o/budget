@@ -2,6 +2,7 @@ import 'package:budget_core/budget_core.dart';
 
 import 'access.dart';
 import 'claim.dart';
+import 'fetch_schedule.dart';
 
 // This device's side of bank sync (ticket 10): the access URL, the accounts
 // it has linked, and how much of today's request budget is spent. None of
@@ -178,6 +179,9 @@ final class SimpleFinBook {
     this.links = const [],
     this.requests = const RequestCount(),
     this.lastFetch,
+    this.schedule = const FetchSchedule(),
+    this.auth = AuthState.linked,
+    this.errors = const [],
   });
 
   factory SimpleFinBook.fromJson(Map<String, Object?> json) => SimpleFinBook(
@@ -196,6 +200,17 @@ final class SimpleFinBook {
       final String iso => CivilDate.parse(iso),
       _ => null,
     },
+    schedule: switch (json['schedule']) {
+      final Map schedule => FetchSchedule.fromJson(
+        schedule.cast<String, Object?>(),
+      ),
+      _ => const FetchSchedule(),
+    },
+    auth: AuthState.parse(json['auth']),
+    errors: [
+      for (final error in (json['errors'] as List? ?? const []).cast<Map>())
+        BankError.fromJson(error.cast<String, Object?>()),
+    ],
   );
 
   /// The access URL, credentials included. Null until the person connects
@@ -211,7 +226,29 @@ final class SimpleFinBook {
   /// 10 days before.
   final CivilDate? lastFetch;
 
+  /// When the last automatic fetch started, which sets the 6-hour gap.
+  final FetchSchedule schedule;
+
+  /// Whether the access URL still works, so automatic fetches can run.
+  final AuthState auth;
+
+  /// The messages the last fetch left to show, such as SimpleFIN's own
+  /// `errors` array. A later fetch replaces them.
+  final List<BankError> errors;
+
   bool get connected => accessUrl != null;
+
+  /// Whether automatic fetches are held back until the person re-links.
+  bool get automaticPaused => auth.paused;
+
+  /// Whether an automatic fetch may run at [now]: connected, not paused
+  /// for a re-link, at least 6 hours since the last automatic attempt, and
+  /// a request left in today's budget (ticket 10).
+  bool automaticFetchDue(DateTime now) =>
+      connected &&
+      !automaticPaused &&
+      schedule.isDue(now) &&
+      requests.canFetch(CivilDate.fromDateTime(now.toLocal()));
 
   /// The access URL as a client uses it. Null until connected.
   SimpleFinAccess? get access =>
@@ -226,12 +263,14 @@ final class SimpleFinBook {
       if (link.accountId != null) link,
   ];
 
-  /// This book, now holding [accessUrl].
+  /// This book, now holding [accessUrl]. A re-link clears the pause an auth
+  /// failure left and the messages that came with it.
   SimpleFinBook withAccess(String accessUrl) => SimpleFinBook(
     accessUrl: accessUrl,
     links: links,
     requests: requests,
     lastFetch: lastFetch,
+    schedule: schedule,
   );
 
   /// This book, disconnected: no token and nothing linked.
@@ -247,6 +286,9 @@ final class SimpleFinBook {
     ],
     requests: requests,
     lastFetch: lastFetch,
+    schedule: schedule,
+    auth: auth,
+    errors: errors,
   );
 
   /// Reserves one request from today's budget, before asking the bridge.
@@ -255,6 +297,21 @@ final class SimpleFinBook {
     links: links,
     requests: requests.afterFetch(today),
     lastFetch: lastFetch,
+    schedule: schedule,
+    auth: auth,
+    errors: errors,
+  );
+
+  /// Records that an automatic fetch started at [now], so the next one
+  /// waits 6 hours (ticket 10).
+  SimpleFinBook attemptedAutomatically(DateTime now) => SimpleFinBook(
+    accessUrl: accessUrl,
+    links: links,
+    requests: requests,
+    lastFetch: lastFetch,
+    schedule: schedule.attemptedAt(now),
+    auth: auth,
+    errors: errors,
   );
 
   /// Records a successful fetch, so the next window re-reads the 10 days
@@ -264,6 +321,42 @@ final class SimpleFinBook {
     links: links,
     requests: requests,
     lastFetch: today,
+    schedule: schedule,
+    auth: auth,
+    errors: errors,
+  );
+
+  /// This book with [errors] as what the last fetch left to show.
+  SimpleFinBook withErrors(List<BankError> errors) => SimpleFinBook(
+    accessUrl: accessUrl,
+    links: links,
+    requests: requests,
+    lastFetch: lastFetch,
+    schedule: schedule,
+    auth: auth,
+    errors: errors,
+  );
+
+  /// This book paused: the access URL was refused, so automatic fetches
+  /// wait until the person re-links (ticket 10).
+  SimpleFinBook needsRelink() => SimpleFinBook(
+    accessUrl: accessUrl,
+    links: links,
+    requests: requests,
+    lastFetch: lastFetch,
+    schedule: schedule,
+    auth: AuthState.needsRelink,
+    errors: errors,
+  );
+
+  /// This book linked again: a fetch succeeded, so the pause is over.
+  SimpleFinBook resumed() => SimpleFinBook(
+    accessUrl: accessUrl,
+    links: links,
+    requests: requests,
+    lastFetch: lastFetch,
+    schedule: schedule,
+    errors: errors,
   );
 
   /// This book with the balance [result] reported for each linked account,
@@ -285,6 +378,9 @@ final class SimpleFinBook {
     ],
     requests: requests,
     lastFetch: lastFetch,
+    schedule: schedule,
+    auth: auth,
+    errors: errors,
   );
 
   /// Each linked account whose bank balance differs from the app's (cleared
@@ -333,6 +429,9 @@ final class SimpleFinBook {
     'links': [for (final link in links) link.toJson()],
     'requests': requests.toJson(),
     'lastFetch': lastFetch?.toIso(),
+    'schedule': schedule.toJson(),
+    'auth': auth.name,
+    'errors': [for (final error in errors) error.toJson()],
   };
 
   /// Never prints the access URL. Storage uses [toJson].

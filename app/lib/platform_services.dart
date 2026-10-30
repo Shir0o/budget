@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:budget_core/budget_core.dart';
@@ -8,12 +9,46 @@ import 'package:budget_store/budget_store.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:workmanager/workmanager.dart';
 
 import 'budget_library.dart';
 import 'services.dart';
 
-/// The real services: secure storage, the system file dialog and
-/// local_auth. Only `main.dart` uses these; tests use the in-memory ones.
+// The real services: secure storage, the system file dialog and
+// local_auth. Only `main.dart` uses these; tests use the in-memory ones.
+
+/// WorkManager's names for the 6-hourly bank fetch (ticket 10).
+const bankSyncTask = 'budget.bankSync';
+const bankSyncUniqueName = 'budget.bankSync.periodic';
+
+/// Android's WorkManager, arranging a fetch at most every 6 hours (ticket
+/// 10). Android starts the work in its own isolate, so
+/// `bankSyncDispatcher` rebuilds the device's services from secure storage
+/// when it fires.
+///
+/// macOS has no background fetch in this ticket: bank sync there runs by
+/// hand while the app is open, so this arranges nothing.
+final class WorkManagerBankSyncScheduler implements BankSyncScheduler {
+  const WorkManagerBankSyncScheduler();
+
+  @override
+  Future<void> schedule() async {
+    if (!Platform.isAndroid) return;
+    await Workmanager().registerPeriodicTask(
+      bankSyncUniqueName,
+      bankSyncTask,
+      frequency: FetchSchedule.interval,
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+      constraints: Constraints(networkType: NetworkType.connected),
+    );
+  }
+
+  @override
+  Future<void> cancel() async {
+    if (!Platform.isAndroid) return;
+    await Workmanager().cancelByUniqueName(bankSyncUniqueName);
+  }
+}
 
 final class SecureBudgetKeyStore implements BudgetKeyStore {
   const SecureBudgetKeyStore(this._storage);

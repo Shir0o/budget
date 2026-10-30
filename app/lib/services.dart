@@ -75,6 +75,17 @@ abstract interface class Authenticator {
   });
 }
 
+/// Asks the platform to fetch while the app is closed (ticket 10). The app
+/// decides when it should run; the platform only decides how.
+abstract interface class BankSyncScheduler {
+  /// Arranges one fetch at most every [FetchSchedule.interval] (6 hours).
+  /// Calling it when the work is already arranged changes nothing.
+  Future<void> schedule();
+
+  /// Stops it: the bank was disconnected, or the link needs re-making.
+  Future<void> cancel();
+}
+
 /// Everything the app needs from the device, in one place so tests and
 /// previews can swap it.
 final class AppServices {
@@ -85,12 +96,14 @@ final class AppServices {
     required this.authenticator,
     FileLoader? loader,
     SimpleFinTransport? simpleFin,
+    BankSyncScheduler? scheduler,
     DriveGateway? drive,
     this.mcp,
     bool appLockEnabled = false,
   }) : appLockEnabled = ValueNotifier(appLockEnabled),
        loader = loader ?? InMemoryFileLoader(),
        simpleFin = SimpleFinClient(simpleFin ?? FakeSimpleFinTransport()),
+       scheduler = scheduler ?? FakeBankSyncScheduler(),
        drive = drive ?? InMemoryDrive();
 
   /// In-memory services for tests and previews.
@@ -111,6 +124,10 @@ final class AppServices {
   /// The SimpleFIN Bridge client. Tests answer through their own
   /// [SimpleFinTransport], so nothing goes to the network.
   final SimpleFinClient simpleFin;
+
+  /// The platform's background fetch (ticket 10). Tests record calls
+  /// instead of arranging anything.
+  final BankSyncScheduler scheduler;
 
   /// The Google Drive app data folder sync writes to. Tests and previews
   /// keep it in memory, so nothing leaves the device.
@@ -262,6 +279,18 @@ final class InMemoryFileLoader implements FileLoader {
     next = null;
     return bytes;
   }
+}
+
+/// A [BankSyncScheduler] that records calls instead of arranging anything.
+final class FakeBankSyncScheduler implements BankSyncScheduler {
+  var scheduled = 0;
+  var cancelled = 0;
+
+  @override
+  Future<void> schedule() async => scheduled++;
+
+  @override
+  Future<void> cancel() async => cancelled++;
 }
 
 /// An [Authenticator] whose answers are set by the caller.

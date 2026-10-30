@@ -49,9 +49,11 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
 
   Future<void> _load() async {
     final book = await widget.services.prefs.readSimpleFinBook();
+    await syncBankSchedule(widget.services.scheduler, book);
     if (!mounted) return;
     setState(() {
       _book = book;
+      _errors = [for (final error in book.errors) error.message];
       _loaded = true;
     });
   }
@@ -84,7 +86,9 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
       if (!mounted) return;
       _token.clear();
       setState(() => _book = book);
-      await _fetch(openLinks: true);
+      // Re-linking keeps the links that are already made; only a first
+      // connection needs Link accounts opened for it.
+      await _fetch(openLinks: book.links.isEmpty);
     } on SimpleFinException catch (error) {
       if (mounted) setState(() => _message = [error.message]);
     } on Exception {
@@ -110,6 +114,7 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
       _message = [?outcome.message];
       _errors = outcome.errors;
     });
+    await syncBankSchedule(widget.services.scheduler, outcome.book);
     if (openLinks && outcome.accounts.isNotEmpty) {
       await _openLinks(outcome.accounts);
     }
@@ -157,9 +162,11 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
     if (confirmed != true || !mounted) return;
     await _run(() async {
       await widget.services.prefs.writeSimpleFinBook(const SimpleFinBook());
+      await syncBankSchedule(widget.services.scheduler, const SimpleFinBook());
       if (!mounted) return;
       setState(() {
         _book = const SimpleFinBook();
+        _errors = const [];
         _message = ['Disconnected. Imported transactions stay in the budget.'];
       });
     });
@@ -171,7 +178,7 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const BackHeader(title: 'Connect bank'),
+          const BackHeader(title: 'Bank sync'),
           Expanded(
             child: !_loaded
                 ? const Center(child: CircularProgressIndicator())
@@ -189,6 +196,22 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
                         const SizedBox(height: 12),
                       ],
                       if (_book.connected) _connected() else _connectForm(),
+                      if (_book.connected && _book.automaticPaused) ...[
+                        const SizedBox(height: 12),
+                        _Banner(
+                          key: const ValueKey('bank-sync-paused'),
+                          icon: Icons.link_off,
+                          background: Palette.problemPill,
+                          foreground: Palette.problemText,
+                          lines: const [
+                            'SimpleFIN refused the access URL, so automatic '
+                                'fetches are paused. Re-link your bank to '
+                                'start them again.',
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _connectForm(relink: true),
+                      ],
                       if (_message.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         _Banner(
@@ -213,14 +236,17 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
     ),
   );
 
-  Widget _connectForm() => Column(
+  Widget _connectForm({bool relink = false}) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     spacing: 12,
     children: [
-      const Hint(
-        'SimpleFIN Bridge reads your bank for you. At '
-        'beta-bridge.simplefin.org, connect a bank and copy its setup '
-        'token. A token can be claimed once.',
+      Hint(
+        relink
+            ? 'Paste a new setup token from SimpleFIN. Your account links '
+                  'and the transactions already imported stay as they are.'
+            : 'SimpleFIN Bridge reads your bank for you. At '
+                  'beta-bridge.simplefin.org, connect a bank and copy its '
+                  'setup token. A token can be claimed once.',
       ),
       CardBox(
         padding: const EdgeInsets.all(16),
@@ -246,7 +272,13 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
             FilledButton(
               key: const ValueKey('connect-bank'),
               onPressed: _busy ? null : _connect,
-              child: Text(_busy ? 'Connecting…' : 'Connect bank'),
+              child: Text(
+                _busy
+                    ? 'Connecting…'
+                    : relink
+                    ? 'Re-link bank'
+                    : 'Connect bank',
+              ),
             ),
           ],
         ),
@@ -265,6 +297,12 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
         linked == 0 ? 'None yet' : '$linked of ${_book.links.length} linked',
       ),
       ('Fetches left today', '$remaining of ${RequestCount.dailyLimit}'),
+      (
+        'Automatic fetch',
+        _book.automaticPaused
+            ? 'Paused until you re-link'
+            : 'Every 6 hours, at most',
+      ),
       (
         'Last fetch',
         _book.lastFetch == null ? 'Never' : formatDate(_book.lastFetch!),
