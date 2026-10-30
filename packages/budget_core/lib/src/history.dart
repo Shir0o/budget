@@ -1,9 +1,12 @@
 import 'actor.dart';
+import 'civil_date.dart';
 import 'commands.dart';
 import 'event.dart';
 import 'event_effects.dart';
 import 'hlc.dart';
 import 'money.dart';
+
+part 'history_restore.dart';
 
 /// One before → after value in a Change History entry, ready to show.
 /// [before] is null for something new; [after] is null when there is no
@@ -54,7 +57,7 @@ final class HistoryEntry {
   /// Empty otherwise.
   final List<String> reverts;
 
-  /// For a revert group, the Actor who asked for it.
+  /// For a revert or Restore to a date group, the Actor who asked for it.
   final Actor? by;
 
   /// Whether compensating Events can be written for it. Budget creation and
@@ -346,10 +349,12 @@ final class ChangeHistory {
   /// Builds [group]'s entry. Groups it reverts were built before it.
   HistoryEntry _entry(_Group group) {
     final described = [for (final record in group.records) ?_describe(record)];
-    final marker = group.records
+    Event? find(String type) => group.records
         .map((r) => r.event)
-        .where((e) => e.type == EventType.groupReverted)
+        .where((e) => e.type == type)
         .firstOrNull;
+    final marker = find(EventType.groupReverted);
+    final restore = find(EventType.restoredToDate);
     final reverts = [
       ...?(marker?.payload['groupIds'] as List?)?.cast<String>(),
     ];
@@ -363,14 +368,16 @@ final class ChangeHistory {
     return HistoryEntry._(
       groupId: group.id,
       events: [for (final record in group.records) record.event],
-      summary: reverts.isEmpty
+      summary: restore != null
+          ? 'Restored to ${_date(restore.payload['date'] as String)}'
+          : reverts.isEmpty
           ? _summarize(group, described)
           : '${undo ? 'Undid' : 'Redid'} “${target?.summary ?? 'a change'}”'
                 '${_more(reverts.length - 1, 'later change')}',
       changes: [for (final d in described) ...d.changes],
       entities: entities,
       reverts: reverts,
-      by: switch (marker?.payload['by']) {
+      by: switch ((marker ?? restore)?.payload['by']) {
         final String by => Actor.fromValue(by),
         _ => null,
       },

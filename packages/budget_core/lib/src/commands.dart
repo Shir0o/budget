@@ -233,6 +233,15 @@ final class RevertGroup extends Command {
   final bool includeDependents;
 }
 
+/// Restores the budget to how it was at the end of [date] (ticket 11): one
+/// group of compensating Events, with actor `revert`, for the full
+/// difference, so the restore can itself be reverted. Nothing is erased.
+final class RestoreToDate extends Command {
+  const RestoreToDate(this.date);
+
+  final CivilDate date;
+}
+
 /// Why a command was refused.
 enum Rejection {
   /// [CreateBudget] when the log already holds a budget.
@@ -259,8 +268,8 @@ enum Rejection {
   /// Assigning to, moving money with, or archiving an archived Category.
   categoryArchived,
 
-  /// [SetAssignment] to the amount already assigned, or a [RevertGroup]
-  /// that skips every field.
+  /// [SetAssignment] to the amount already assigned, a [RevertGroup]
+  /// that skips every field, or a [RestoreToDate] with nothing to undo.
   noChange,
 
   /// [MoveMoney] or [CreateTransfer] of zero or less.
@@ -314,7 +323,8 @@ enum Rejection {
   alreadyReverted,
 
   /// [RevertGroup] of something with no undo, such as creating the budget
-  /// or an Event type this version doesn't know.
+  /// or an Event type this version doesn't know. Also a [RestoreToDate]
+  /// that would need such an undo, such as a date before the budget.
   cannotRevert,
 
   /// [RevertGroup] without [RevertGroup.includeDependents] when later

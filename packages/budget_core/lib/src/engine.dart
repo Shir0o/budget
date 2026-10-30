@@ -55,6 +55,10 @@ final class BudgetEngine {
   ChangeHistory get history => _history ??= ChangeHistory.of(_events);
   ChangeHistory? _history;
 
+  /// The budget as it was at the end of [date], read-only (ticket 11).
+  BudgetState stateAsOf(CivilDate date) =>
+      BudgetState.replay(eventsAsOf(_events, date));
+
   CommandResult execute(Command command) {
     final result = _decide(command, _state, _Stamp(this));
     if (result is Accepted) {
@@ -259,6 +263,18 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
     case RevertGroup():
       final compensation = stamp._engine.history.compensate(
         command,
+        by: stamp.actor,
+      );
+      if (compensation.rejection case final reason?) return Rejected(reason);
+      return Accepted([
+        for (final (type, payload) in compensation.events)
+          stamp.event(type, payload, actor: Actor.revert),
+      ]);
+
+    case RestoreToDate(:final date):
+      final compensation = restoreTo(
+        stamp._engine._events,
+        date,
         by: stamp.actor,
       );
       if (compensation.rejection case final reason?) return Rejected(reason);

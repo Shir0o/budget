@@ -17,6 +17,9 @@ abstract final class Palette {
   /// A light orange that reads on [ink], for problems on the hero card.
   static const problemOnDark = Color(0xFFF4B183);
 
+  /// A light teal that reads on [ink], for the Go back to a date bar.
+  static const onDarkAccent = Color(0xFF7FD4C1);
+
   /// Available pills: positive, zero and negative.
   static const positivePill = Color(0xFFDDEFEA);
   static const positiveText = Color(0xFF0A5A4D);

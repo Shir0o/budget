@@ -246,6 +246,7 @@ final Map<String, EventSpec> eventSpecs = {
     ],
   ),
   EventType.groupReverted: EventSpec((_) => const []),
+  EventType.restoredToDate: EventSpec((_) => const []),
 };
 
 /// The Events that set [fields] on [entity], or null when one of them
