@@ -41,6 +41,10 @@ jobs:
         working-directory: packages/budget_simplefin
         run: dart test
 
+      - name: Test budget_mcp
+        working-directory: packages/budget_mcp
+        run: dart test
+
       - name: Test budget_sync
         working-directory: packages/budget_sync
         run: dart test

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'app_lock_gate.dart';
 import 'budget_library.dart';
+import 'desktop.dart';
 import 'screens/budget_screen.dart';
 import 'screens/welcome_screen.dart';
 import 'services.dart';
@@ -34,7 +35,9 @@ class BudgetApp extends StatelessWidget {
       library: library,
       child: AppServicesScope(
         services: services,
-        child: AppLockGate(services: services, child: child!),
+        child: DesktopFrame(
+          child: AppLockGate(services: services, child: child!),
+        ),
       ),
     ),
     home: library.current.state.budget == null

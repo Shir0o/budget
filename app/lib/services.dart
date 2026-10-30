@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:budget_core/budget_core.dart';
+import 'package:budget_mcp/budget_mcp.dart';
 import 'package:budget_simplefin/budget_simplefin.dart';
 import 'package:budget_sync/budget_sync.dart';
 import 'package:flutter/widgets.dart';
@@ -78,6 +79,7 @@ final class AppServices {
     required this.authenticator,
     SimpleFinTransport? simpleFin,
     DriveGateway? drive,
+    this.mcp,
     bool appLockEnabled = false,
   }) : appLockEnabled = ValueNotifier(appLockEnabled),
        simpleFin = SimpleFinClient(simpleFin ?? FakeSimpleFinTransport()),
@@ -89,6 +91,7 @@ final class AppServices {
     prefs: InMemoryDevicePrefs(),
     saver: InMemoryFileSaver(),
     authenticator: FakeAuthenticator(),
+    mcp: InMemoryMcpStore(),
   );
 
   final BudgetKeyStore keys;
@@ -103,6 +106,10 @@ final class AppServices {
   /// The Google Drive app data folder sync writes to. Tests and previews
   /// keep it in memory, so nothing leaves the device.
   final DriveGateway drive;
+
+  /// The budgets and settings shared with the `budget-mcp` binary (ticket
+  /// 13). The MCP server is macOS only, so this is null where it can't run.
+  final McpStore? mcp;
 
   /// Whether the app lock is on. Read at launch so the first frame is
   /// already locked.

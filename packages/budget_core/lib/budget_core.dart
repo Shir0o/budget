@@ -31,6 +31,7 @@ export 'src/export.dart';
 export 'src/history.dart';
 export 'src/hlc.dart';
 export 'src/money.dart';
+export 'src/redaction.dart';
 export 'src/review.dart';
 export 'src/sensitive_numbers.dart';
 export 'src/target.dart';

@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:budget_core/budget_core.dart';
+import 'package:budget_mcp/budget_mcp.dart';
 import 'package:budget_simplefin/budget_simplefin.dart';
 import 'package:budget_sync/budget_sync.dart';
 import 'package:flutter/foundation.dart';
@@ -43,6 +46,9 @@ Future<void> main() async {
       transport: const HttpDriveTransport(),
       access: const SecureDriveAccess(secrets),
     ),
+    // budget-mcp is macOS only (ticket 13); its registry sits next to the
+    // encrypted store files.
+    mcp: Platform.isMacOS ? FileMcpStore(dir.path) : null,
     appLockEnabled: await prefs.readAppLockEnabled(),
   );
   runApp(BudgetApp(library: library, services: services));

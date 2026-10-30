@@ -64,8 +64,9 @@ void main() {
       expect(find.text('Home'), findsOneWidget);
       expect(find.text('Export & backup'), findsOneWidget);
       expect(find.text('App lock'), findsOneWidget);
-      // App lock and Encrypted sync are both off on a fresh install.
-      expect(find.text('Off'), findsNWidgets(2));
+      // App lock, Encrypted sync and AI apps (MCP) are all off on a fresh
+      // install.
+      expect(find.text('Off'), findsNWidgets(3));
       expect(find.text('Category priority'), findsOneWidget);
       expect(find.text('Scheduled transactions'), findsOneWidget);
       expect(find.text('Forecast'), findsOneWidget);
@@ -74,8 +75,9 @@ void main() {
       expect(find.text('Bank sync'), findsOneWidget);
       expect(find.text('SimpleFIN'), findsOneWidget);
       expect(find.text('Encrypted sync'), findsOneWidget);
+      expect(find.text('AI apps (MCP)'), findsOneWidget);
       // Rows for features that aren't built yet stay hidden.
-      for (final hidden in ['AI apps (MCP)', 'Import & compare']) {
+      for (final hidden in ['Import & compare']) {
         expect(find.text(hidden), findsNothing);
       }
     });
