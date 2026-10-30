@@ -370,6 +370,10 @@ CommandResult _decide(Command command, BudgetState state, _Stamp stamp) {
       return _enterSchedule(command, state, stamp);
     case ImportBankTransactions():
       return _importBankTransactions(command, state, stamp);
+    case ConfirmBankMatch():
+      return _confirmBankMatch(command, state, stamp);
+    case RejectBankMatch():
+      return _rejectBankMatch(command, state, stamp);
     case CommitImport():
       return _commitImport(command, state, stamp);
     case CreateBusinessTag(:final name, :final line, :final rule):

@@ -65,10 +65,13 @@ extension Review on BudgetState {
   /// Every Unreviewed line, newest date first (same-day ones newest added
   /// first), then in line order. Transfer lines and tracking-account lines
   /// are left out: a transfer isn't spending, and a tracking account is
-  /// outside the budget.
+  /// outside the budget. A transaction waiting on a possible bank match is
+  /// left out too: it may merge into another line, so Review waits for that
+  /// answer (ticket 10, step 4).
   List<ReviewItem> get reviewQueue => [
     for (final transaction in _newestFirst())
       if (!transaction.isTransfer &&
+          transaction.pendingMatch == null &&
           (account(transaction.accountId)?.type.onBudget ?? true))
         for (final line in transaction.lines)
           if (!line.reviewed) ReviewItem(transaction, line),

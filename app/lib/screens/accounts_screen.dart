@@ -1,4 +1,5 @@
 import 'package:budget_core/budget_core.dart';
+import 'package:budget_simplefin/budget_simplefin.dart';
 import 'package:flutter/material.dart';
 
 import '../services.dart';
@@ -6,12 +7,14 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'account_register_screen.dart';
 import 'add_account_screen.dart';
+import 'reconcile_screen.dart';
 import 'settings_screen.dart';
 
 /// Accounts (canvas: Accounts): net worth, then budget and tracking
 /// accounts with their subtotals. A card's debt that its Card Payment
-/// Category doesn't cover shows in orange. Bank sync and encrypted sync
-/// arrive with tickets 10 and 12.
+/// Category doesn't cover shows in orange. When a bank fetch left an
+/// account's balance different from the bank's, its row shows a badge that
+/// opens Reconcile (ticket 10).
 class AccountsScreen extends StatefulWidget {
   const AccountsScreen({super.key, required this.engine});
 
@@ -22,10 +25,31 @@ class AccountsScreen extends StatefulWidget {
 }
 
 class _AccountsScreenState extends State<AccountsScreen> {
+  /// The last fetch's balances, to compare with the app's.
+  var _book = const SimpleFinBook();
+  var _bookRead = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_bookRead) return;
+    _bookRead = true;
+    _readBook();
+  }
+
+  Future<void> _readBook() async {
+    final book = await AppServicesScope.of(context).prefs.readSimpleFinBook();
+    if (mounted) setState(() => _book = book);
+  }
+
   Future<void> _open(Widget screen) async {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
-    setState(() {}); // The engine's state may have changed.
+    if (!mounted) return;
+    // A fetch or a reconcile may have changed the budget or the bank's
+    // balance.
+    await _readBook();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -41,6 +65,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
       for (final a in state.accounts)
         if (!a.type.onBudget) a,
     ];
+    final discrepancies = _book.discrepancies(state);
 
     Widget section(String title, List<Account> accounts) => _Section(
       title: title,
@@ -54,6 +79,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
             name: a.name,
             balance: state.balance(a.id),
             detail: _detail(state, a, month),
+            discrepancy: discrepancies[a.id],
+            onReconcile: () =>
+                _open(ReconcileScreen(engine: engine, accountId: a.id)),
             onTap: () =>
                 _open(AccountRegisterScreen(engine: engine, accountId: a.id)),
           ),
@@ -223,11 +251,18 @@ class _AccountRow extends StatelessWidget {
     required this.balance,
     required this.detail,
     required this.onTap,
+    required this.onReconcile,
+    this.discrepancy,
   });
 
   final String name;
   final Money balance;
   final ({String text, bool problem}) detail;
+
+  /// The last fetch's bank balance, when it differs from the app's
+  /// (ticket 10). The badge opens Reconcile.
+  final Discrepancy? discrepancy;
+  final VoidCallback onReconcile;
   final VoidCallback onTap;
 
   @override
@@ -254,11 +289,75 @@ class _AccountRow extends StatelessWidget {
                     color: detail.problem ? Palette.problemText : Palette.muted,
                   ),
                 ),
+                if (discrepancy case final found?)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: _DiscrepancyBadge(
+                      difference: found.difference,
+                      onTap: onReconcile,
+                    ),
+                  ),
               ],
             ),
           ),
           Text(balance.format(), style: amountStyle()),
         ],
+      ),
+    ),
+  );
+}
+
+/// "Bank differs −$12.34": the last fetch's balance against the app's
+/// (ticket 10). Tapping opens Reconcile.
+class _DiscrepancyBadge extends StatelessWidget {
+  const _DiscrepancyBadge({required this.difference, required this.onTap});
+
+  final Money difference;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: 'Bank balance differs. Reconcile.',
+    child: InkWell(
+      key: const ValueKey('account-discrepancy'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 32),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: Palette.problemPill,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 6,
+          children: [
+            const Icon(
+              Icons.sync_problem,
+              size: 14,
+              color: Palette.problemText,
+            ),
+            Flexible(
+              child: Text(
+                'Bank differs ${formatSigned(difference)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: amountStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Palette.problemText,
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right,
+              size: 14,
+              color: Palette.problemText,
+            ),
+          ],
+        ),
       ),
     ),
   );

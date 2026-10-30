@@ -87,9 +87,12 @@ Future<BankSyncOutcome> fetchByHand({
   }
 
   final applied = engine.execute(
-    ImportBankTransactions(entries: bankEntries(counted, result)),
+    ImportBankTransactions(
+      entries: bankEntries(counted, result),
+      fetchedAccounts: fetchedAccountIds(counted, result),
+    ),
   );
-  counted = counted.fetched(today);
+  counted = counted.recordedBalances(result).fetched(today);
   await save(counted);
 
   return BankSyncOutcome(
@@ -109,14 +112,32 @@ String _importedMessage(List<Event> events) {
       .where((event) => event.type == EventType.transactionCreated)
       .length;
   // One transaction can take several Events, such as a field change and a
-  // new amount, so count the transactions touched.
+  // new amount, so count the transactions touched. Dropped charges and
+  // possible matches are said separately below.
   final touched = <Object?>{
-    for (final event in events) event.payload['transactionId'],
+    for (final event in events)
+      if (event.type != EventType.transactionDeleted && !_proposesMatch(event))
+        event.payload['transactionId'],
   }.length;
   final updated = touched - created;
-  final parts = [
+  final proposed = events.where(_proposesMatch).length;
+  final dropped = events
+      .where((event) => event.type == EventType.transactionDeleted)
+      .length;
+  final imported = [
     if (created > 0) '$created new',
     if (updated > 0) '$updated updated',
   ].join(' and ');
-  return 'Imported $parts.';
+  return [
+    if (imported.isNotEmpty) 'Imported $imported.',
+    if (proposed > 0)
+      '$proposed possible ${proposed == 1 ? 'match' : 'matches'}.',
+    if (dropped > 0)
+      '$dropped pending ${dropped == 1 ? 'charge' : 'charges'} dropped.',
+  ].join(' ');
 }
+
+/// Whether [event] offers a possible match (ticket 10, step 4).
+bool _proposesMatch(Event event) =>
+    event.type == EventType.transactionFieldsSet &&
+    (event.payload['fields'] as Map)['pendingMatch'] != null;

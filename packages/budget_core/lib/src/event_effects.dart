@@ -378,7 +378,14 @@ List<PlannedEvent>? writeFields(EntityRef entity, Map<String, Object?> fields) {
       if (rest.remove(splitField) case final Map<String, Object?> split) {
         events.add((EventType.transactionSplitSet, {key: entity.id, ...split}));
       }
-      const writable = {'payee', 'date', 'memo', 'cleared'};
+      const writable = {
+        'payee',
+        'date',
+        'memo',
+        'cleared',
+        'bankId',
+        'pendingMatch',
+      };
       if (!rest.keys.every(writable.contains)) return null;
       if (rest.isNotEmpty) {
         events.insert(0, (
