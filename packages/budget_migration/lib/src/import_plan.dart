@@ -262,6 +262,10 @@ final class ImportPlan {
     ];
   }
 
+  bool _inReviewQueue(ImportTransaction t) =>
+      t.transferTransactionId == null &&
+      accounts.any((a) => a.id == t.accountId && a.type.onBudget);
+
   ImportReport get report => ImportReport(
     accounts: accounts.length,
     categoryGroups: categoryGroups.length,
@@ -276,9 +280,12 @@ final class ImportPlan {
       0,
       (total, t) => total + t.lines.where((line) => line.reviewed).length,
     ),
+    // Only what Review will list: not transfer lines, not tracking accounts.
     unreviewedLines: transactions.fold(
       0,
-      (total, t) => total + t.lines.where((line) => !line.reviewed).length,
+      (total, t) => !_inReviewQueue(t)
+          ? total
+          : total + t.lines.where((line) => !line.reviewed).length,
     ),
     lastTransactionDate: transactions.isEmpty
         ? null
