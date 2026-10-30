@@ -4,6 +4,7 @@ import 'event.dart';
 import 'history.dart';
 import 'money.dart';
 import 'review.dart';
+import 'target.dart';
 
 /// A request to change the budget. Commands are validated against the
 /// current [BudgetState] and either produce one Event group or a
@@ -293,6 +294,59 @@ final class RestoreToDate extends Command {
   final CivilDate date;
 }
 
+// Targets and automation (ticket 08).
+
+/// Gives [categoryId] [target], replacing any it had.
+final class SetTarget extends Command {
+  const SetTarget({required this.categoryId, required this.target});
+
+  final String categoryId;
+  final Target target;
+}
+
+final class ClearTarget extends Command {
+  const ClearTarget({required this.categoryId});
+
+  final String categoryId;
+}
+
+final class SetAutomationMode extends Command {
+  const SetAutomationMode({required this.categoryId, required this.mode});
+
+  final String categoryId;
+  final AutomationMode mode;
+}
+
+/// Sets the order automation fills Targets in. Categories left out follow,
+/// in their order on screen.
+final class SetPriority extends Command {
+  const SetPriority({required this.categoryIds});
+
+  final List<String> categoryIds;
+}
+
+/// Accepts the lines of [month]'s Suggestion Batch for [categoryIds], all
+/// at once or some of them, as one group with the note "accepted
+/// automation suggestion". The amounts are the batch's.
+final class AcceptSuggestions extends Command {
+  const AcceptSuggestions({required this.month, required this.categoryIds});
+
+  final CalendarMonth month;
+  final List<String> categoryIds;
+}
+
+/// An automation run for [month], which should be the current month:
+/// assigns the auto-mode Categories' lines as one group with actor
+/// `automation`. Suggest-mode lines are left for the person to accept.
+final class RunAutomation extends Command {
+  const RunAutomation({required this.month});
+
+  final CalendarMonth month;
+}
+
+/// The note on an accepted Suggestion Batch's Assignments.
+const acceptedSuggestionNote = 'accepted automation suggestion';
+
 /// Why a command was refused.
 enum Rejection {
   /// [CreateBudget] when the log already holds a budget.
@@ -406,6 +460,18 @@ enum Rejection {
   /// [EditTransaction] of a Reconciled transaction without
   /// `confirmReconciled`.
   reconciledNeedsConfirmation,
+
+  /// A Target of zero or less.
+  targetAmountMustBePositive,
+
+  /// A Repeating Target every 0 or fewer days, weeks, months or years.
+  intervalMustBePositive,
+
+  /// [SetPriority] listing a Category twice.
+  duplicateCategory,
+
+  /// [AcceptSuggestions] for a Category that isn't in the batch.
+  notSuggested,
 }
 
 /// What a command produced.

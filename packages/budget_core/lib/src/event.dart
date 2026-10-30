@@ -108,8 +108,10 @@ abstract final class EventType {
   /// the account at that point becomes Reconciled (ticket 09).
   static const reconciled = 'Reconciled';
 
-  /// `{category, month, deltaCents}`, where `month` is `YYYY-MM`. A delta,
-  /// so concurrent Assignments from two devices add up (ticket 06).
+  /// `{category, month, deltaCents, note?}`, where `month` is `YYYY-MM`. A
+  /// delta, so concurrent Assignments from two devices add up (ticket 06).
+  /// An accepted Suggestion Batch has the note "accepted automation
+  /// suggestion".
   static const assignmentChanged = 'AssignmentChanged';
 
   // Lifecycle Events that reverts emit (ticket 11). Restoring brings an
@@ -149,6 +151,21 @@ abstract final class EventType {
   /// `date` is the `YYYY-MM-DD` restored to, as of its end, and `by` is the
   /// Actor who asked. It changes no state.
   static const restoredToDate = 'RestoredToDate';
+
+  // Targets and automation (ticket 08).
+
+  /// `{categoryId, target}`, where `target` is a Target's stored form. Last
+  /// writer wins.
+  static const targetSet = 'TargetSet';
+
+  /// `{categoryId}`
+  static const targetCleared = 'TargetCleared';
+
+  /// `{categoryId, mode}`, where `mode` is `off`, `suggest` or `auto`.
+  static const automationModeSet = 'AutomationModeSet';
+
+  /// `{categoryIds}`: the whole priority order, replaced as a whole.
+  static const prioritySet = 'PrioritySet';
 }
 
 /// The `category` value of a transaction line whose money goes to
