@@ -1,6 +1,7 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'category_picker.dart';
@@ -351,7 +352,7 @@ class _Tag extends StatelessWidget {
 typedef LineEdit = ({LineDraft? line});
 
 /// Edits one split line: amount, Category, business status and memo.
-/// Returns null when dismissed.
+/// Returns null when dismissed. Split is a sheet on a phone already.
 Future<LineEdit?> showLineEditor(
   BuildContext context, {
   required BudgetState state,
@@ -359,10 +360,9 @@ Future<LineEdit?> showLineEditor(
   required String payee,
   required CivilDate date,
   required bool canRemove,
-}) => showModalBottomSheet<LineEdit>(
-  context: context,
-  isScrollControlled: true,
-  backgroundColor: Palette.card,
+}) => openFlow<LineEdit>(
+  context,
+  presentation: FlowPresentation.sheet,
   builder: (_) => _LineEditor(
     state: state,
     line: line,

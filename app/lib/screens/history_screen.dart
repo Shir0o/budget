@@ -55,7 +55,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     bottomNavigationBar: MainNav(
-      current: MainTab.history,
+      current: Section.history,
       engine: widget.engine,
     ),
     body: SafeArea(

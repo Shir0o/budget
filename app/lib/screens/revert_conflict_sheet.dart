@@ -1,6 +1,7 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'history_screen.dart';
@@ -11,14 +12,10 @@ import 'history_screen.dart';
 Future<RevertGroup?> showRevertConflicts(
   BuildContext context,
   RevertPlan plan,
-) => showModalBottomSheet<RevertGroup>(
-  context: context,
-  isScrollControlled: true,
-  backgroundColor: Palette.card,
+) => openFlow<RevertGroup>(
+  context,
+  presentation: FlowPresentation.sheet,
   showDragHandle: true,
-  shape: const RoundedRectangleBorder(
-    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-  ),
   builder: (_) => _RevertConflictSheet(plan: plan),
 );
 

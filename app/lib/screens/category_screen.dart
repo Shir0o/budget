@@ -1,6 +1,7 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'history_screen.dart';
@@ -45,26 +46,24 @@ class _CategoryScreenState extends State<CategoryScreen> {
   }
 
   Future<void> _editTarget() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SetTargetScreen(
-          engine: widget.engine,
-          categoryId: widget.categoryId,
-          month: widget.month,
-        ),
+    await openFlow<void>(
+      context,
+      builder: (_) => SetTargetScreen(
+        engine: widget.engine,
+        categoryId: widget.categoryId,
+        month: widget.month,
       ),
     );
     setState(() {});
   }
 
   Future<void> _moveMoney() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => MoveMoneyScreen(
-          engine: widget.engine,
-          fromCategoryId: widget.categoryId,
-          month: widget.month,
-        ),
+    await openFlow<void>(
+      context,
+      builder: (_) => MoveMoneyScreen(
+        engine: widget.engine,
+        fromCategoryId: widget.categoryId,
+        month: widget.month,
       ),
     );
     setState(() {});
