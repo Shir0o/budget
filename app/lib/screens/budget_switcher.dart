@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../budget_library.dart';
+import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'budget_screen.dart';
 import 'welcome_screen.dart';
 
 /// The budget switcher (canvas: BudgetSwitcher), a bottom sheet over the
@@ -11,7 +11,8 @@ import 'welcome_screen.dart';
 /// Welcome flow.
 Future<void> showBudgetSwitcher(BuildContext context) async {
   final library = BudgetLibraryScope.of(context);
-  final navigator = Navigator.of(context);
+  // The window, not the content area: another budget is another app.
+  final navigator = Navigator.of(context, rootNavigator: true);
   final choice = await showModalBottomSheet<_Choice>(
     context: context,
     backgroundColor: Palette.card,
@@ -23,9 +24,9 @@ Future<void> showBudgetSwitcher(BuildContext context) async {
   );
   switch (choice) {
     case _Open(:final id):
-      final engine = await library.switchTo(id);
+      await library.switchTo(id);
       navigator.pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => BudgetScreen(engine: engine)),
+        MaterialPageRoute<void>(builder: (_) => const DesktopShell()),
         (_) => false,
       );
     case _New():

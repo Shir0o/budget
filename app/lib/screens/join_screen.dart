@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../budget_library.dart';
 import '../services.dart';
 import '../settings_widgets.dart';
+import '../shell.dart';
 import '../sync.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'budget_screen.dart';
 
 /// Joins a budget another device already has, from its pairing code
 /// (ticket 12). The budget is read straight from this Google account's Drive
@@ -33,7 +33,8 @@ class _JoinScreenState extends State<JoinScreen> {
 
   Future<void> _join() async {
     final library = BudgetLibraryScope.of(context);
-    final navigator = Navigator.of(context);
+    // The window, not the content area: the joined budget is the app now.
+    final navigator = Navigator.of(context, rootNavigator: true);
     setState(() {
       _busy = true;
       _problem = null;
@@ -51,7 +52,7 @@ class _JoinScreenState extends State<JoinScreen> {
       return;
     }
     navigator.pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => BudgetScreen(engine: engine)),
+      MaterialPageRoute<void>(builder: (_) => const DesktopShell()),
       (_) => false,
     );
   }

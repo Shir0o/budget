@@ -77,6 +77,29 @@ class AvailablePill extends StatelessWidget {
   }
 }
 
+/// What the desktop window's toolbar shows and changes, for the screens in its
+/// content area: the month. Its presence also says the window itself carries
+/// the budget name, the month switcher and Settings, so a screen doesn't
+/// repeat them. Absent on a phone, where each screen keeps its own month.
+class DesktopWindowScope extends InheritedWidget {
+  const DesktopWindowScope({
+    super.key,
+    required this.month,
+    required this.onMonthChanged,
+    required super.child,
+  });
+
+  final CalendarMonth month;
+  final ValueChanged<CalendarMonth> onMonthChanged;
+
+  static DesktopWindowScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<DesktopWindowScope>();
+
+  @override
+  bool updateShouldNotify(DesktopWindowScope old) =>
+      month != old.month || onMonthChanged != old.onMonthChanged;
+}
+
 /// One section of the app. The phone's bottom navigation shows the four with
 /// [inBottomNav]; the desktop sidebar (ticket 61) reads the same model and
 /// lists the accounts below it, so the two layouts can't drift apart.
@@ -143,6 +166,10 @@ class MainNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The desktop window's sidebar replaces the phone's bottom navigation.
+    if (DesktopWindowScope.maybeOf(context) != null) {
+      return const SizedBox.shrink();
+    }
     final state = engine.state;
     return DecoratedBox(
       decoration: const BoxDecoration(
@@ -259,6 +286,50 @@ class _NavTab extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Previous month, the month, next month. The phone's Budget screen and the
+/// desktop window's toolbar both show it.
+class MonthSwitcher extends StatelessWidget {
+  const MonthSwitcher({
+    super.key,
+    required this.month,
+    required this.onChanged,
+  });
+
+  final CalendarMonth month;
+  final ValueChanged<CalendarMonth> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = BoxConstraints.tightFor(width: 44, height: 44);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 2,
+      children: [
+        IconButton(
+          onPressed: () => onChanged(month.previous),
+          tooltip: 'Previous month',
+          constraints: size,
+          icon: const Icon(Icons.chevron_left, color: Palette.muted),
+        ),
+        SizedBox(
+          width: 96,
+          child: Text(
+            formatMonth(month),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+        ),
+        IconButton(
+          onPressed: () => onChanged(month.next),
+          tooltip: 'Next month',
+          constraints: size,
+          icon: const Icon(Icons.chevron_right, color: Palette.muted),
+        ),
+      ],
+    );
+  }
 }
 
 /// A white card with the canvas border.
