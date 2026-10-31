@@ -312,37 +312,45 @@ class _Toolbar extends StatelessWidget {
       color: Palette.card,
       border: Border(bottom: BorderSide(color: Palette.cardBorder)),
     ),
-    child: Row(
-      spacing: 12,
-      children: [
-        BudgetSwitcherMenu(
-          name: name,
-          entries: budgets,
-          onOpen: onOpenBudget,
-          onNew: onNewBudget,
-          onManage: onManageBudgets,
-        ),
-        const Spacer(),
-        MonthSwitcher(month: month, onChanged: onMonthChanged),
-        _ToolbarSearch(state: state, onOpen: onOpenTransaction),
-        FilledButton.icon(
-          onPressed: onNewTransaction,
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('New transaction'),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(0, 40),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+    // The search field gives up width first, so the toolbar still fits just
+    // above the desktop breakpoint.
+    child: LayoutBuilder(
+      builder: (context, constraints) => Row(
+        spacing: 12,
+        children: [
+          BudgetSwitcherMenu(
+            name: name,
+            entries: budgets,
+            onOpen: onOpenBudget,
+            onNew: onNewBudget,
+            onManage: onManageBudgets,
           ),
-        ),
-        IconButton(
-          onPressed: onSettings,
-          tooltip: 'Settings',
-          icon: const Icon(Icons.settings_outlined),
-          color: Palette.inkSoft,
-          iconSize: 22,
-          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-        ),
-      ],
+          const Spacer(),
+          MonthSwitcher(month: month, onChanged: onMonthChanged),
+          _ToolbarSearch(
+            state: state,
+            onOpen: onOpenTransaction,
+            width: constraints.maxWidth < 1100 ? 160 : 240,
+          ),
+          FilledButton.icon(
+            onPressed: onNewTransaction,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('New transaction'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 40),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+          ),
+          IconButton(
+            onPressed: onSettings,
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
+            color: Palette.inkSoft,
+            iconSize: 22,
+            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -350,10 +358,17 @@ class _Toolbar extends StatelessWidget {
 /// The toolbar's search field: every transaction whose payee or memo contains
 /// what was typed, newest first. Choosing one opens it (ticket 68).
 class _ToolbarSearch extends StatefulWidget {
-  const _ToolbarSearch({required this.state, required this.onOpen});
+  const _ToolbarSearch({
+    required this.state,
+    required this.onOpen,
+    required this.width,
+  });
 
   final BudgetState state;
   final ValueChanged<Transaction> onOpen;
+
+  /// How wide the field may be; it narrows near the desktop breakpoint.
+  final double width;
 
   @override
   State<_ToolbarSearch> createState() => _ToolbarSearchState();
@@ -402,7 +417,7 @@ class _ToolbarSearchState extends State<_ToolbarSearch> {
     isFullScreen: false,
     viewHintText: 'Search payees and memos',
     builder: (context, controller) => SizedBox(
-      width: 240,
+      width: widget.width,
       child: TextField(
         key: const ValueKey('toolbar-search'),
         controller: controller,

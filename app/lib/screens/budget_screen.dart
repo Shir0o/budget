@@ -8,6 +8,7 @@ import '../widgets.dart';
 import 'add_account_screen.dart';
 import 'add_category_screen.dart';
 import 'assign_screen.dart';
+import 'budget_desktop.dart';
 import 'budget_switcher.dart';
 import 'category_screen.dart';
 import 'new_transaction_screen.dart';
@@ -72,10 +73,17 @@ class _BudgetScreenState extends State<BudgetScreen> {
   Widget build(BuildContext context) {
     final engine = widget.engine;
     final state = engine.state;
-    // In the desktop window the toolbar carries the budget name, the month and
+    // In the desktop window the month is the wide table and side panel
+    // (ticket 62); its toolbar carries the budget name, the month and
     // Settings, so the phone's header is not repeated here.
-    final window = DesktopWindowScope.maybeOf(context);
-    final month = window?.month ?? _month;
+    if (DesktopWindowScope.maybeOf(context) case final window?) {
+      return DesktopBudgetMonth(
+        engine: engine,
+        month: window.month,
+        onAssign: _assign,
+      );
+    }
+    final month = _month;
     final groups = [
       for (final group in state.categoryGroups)
         (
@@ -100,70 +108,61 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: 14,
                 children: [
-                  if (window == null)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Semantics(
-                          button: true,
-                          label: 'Switch budget',
-                          child: InkWell(
-                            onTap: () => showBudgetSwitcher(context),
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(minHeight: 44),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                spacing: 6,
-                                children: [
-                                  Text(
-                                    state.budget?.name ?? '',
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Semantics(
+                        button: true,
+                        label: 'Switch budget',
+                        child: InkWell(
+                          onTap: () => showBudgetSwitcher(context),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 44),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              spacing: 6,
+                              children: [
+                                Text(
+                                  state.budget?.name ?? '',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                  const Icon(
-                                    Icons.keyboard_arrow_down,
-                                    size: 16,
-                                  ),
-                                ],
-                              ),
+                                ),
+                                const Icon(Icons.keyboard_arrow_down, size: 16),
+                              ],
                             ),
                           ),
                         ),
-                        Row(
-                          children: [
-                            MonthSwitcher(
-                              month: month,
-                              onChanged: (changed) {
-                                if (window case final desktop?) {
-                                  desktop.onMonthChanged(changed);
-                                } else {
-                                  setState(() => _month = changed);
-                                }
-                              },
-                            ),
-                            IconButton(
-                              onPressed: () => _open(
-                                SettingsScreen(
-                                  engine: widget.engine,
-                                  services: AppServicesScope.of(context),
-                                ),
-                              ),
-                              tooltip: 'Settings',
-                              icon: const Icon(Icons.settings_outlined),
-                              color: Palette.ink,
-                              iconSize: 22,
-                              constraints: const BoxConstraints.tightFor(
-                                width: 44,
-                                height: 44,
+                      ),
+                      Row(
+                        children: [
+                          MonthSwitcher(
+                            month: month,
+                            onChanged: (changed) =>
+                                setState(() => _month = changed),
+                          ),
+                          IconButton(
+                            onPressed: () => _open(
+                              SettingsScreen(
+                                engine: widget.engine,
+                                services: AppServicesScope.of(context),
                               ),
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  _ReadyToAssignCard(
+                            tooltip: 'Settings',
+                            icon: const Icon(Icons.settings_outlined),
+                            color: Palette.ink,
+                            iconSize: 22,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 44,
+                              height: 44,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  ReadyToAssignCard(
                     amount: state.readyToAssign(thisMonth()),
                     onAssign: _assign,
                   ),
@@ -234,71 +233,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
       ),
     );
   }
-}
-
-class _ReadyToAssignCard extends StatelessWidget {
-  const _ReadyToAssignCard({required this.amount, required this.onAssign});
-
-  final Money amount;
-  final VoidCallback onAssign;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-    decoration: BoxDecoration(
-      color: Palette.ink,
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      spacing: 12,
-      children: [
-        Expanded(child: _amount()),
-        FilledButton(
-          onPressed: onAssign,
-          style: FilledButton.styleFrom(
-            backgroundColor: Palette.heroAccent,
-            foregroundColor: Palette.onHeroAccent,
-            minimumSize: const Size(0, 44),
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-          ),
-          child: const Text('Assign'),
-        ),
-      ],
-    ),
-  );
-
-  Widget _amount() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    spacing: 4,
-    children: [
-      const Text(
-        'READY TO ASSIGN',
-        style: TextStyle(
-          fontSize: 12,
-          letterSpacing: 0.96,
-          color: Palette.heroLabel,
-        ),
-      ),
-      Text(
-        amount.formatDollars(),
-        style: amountStyle(
-          fontSize: 34,
-          fontWeight: FontWeight.w600,
-          color: amount.isNegative ? Palette.problemOnDark : Palette.background,
-        ).copyWith(letterSpacing: -0.68),
-      ),
-      if (amount.isNegative)
-        const Text(
-          'Over-assigned',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: Palette.problemOnDark,
-          ),
-        ),
-    ],
-  );
 }
 
 const _assignedWidth = 84.0;

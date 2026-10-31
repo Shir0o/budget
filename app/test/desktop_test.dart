@@ -73,15 +73,79 @@ BudgetEngine _empty() => BudgetEngine(
   actor: Actor.userAndroid,
 );
 
-Future<void> _pumpAt(
-  WidgetTester tester,
-  Size size,
-  BudgetEngine engine,
-) async {
+BudgetEngine _engine(EventLog log) =>
+    BudgetEngine(log: log, deviceId: 'test-device', actor: Actor.userAndroid);
+
+String _id(CommandResult result, String field) =>
+    (result as Accepted).events.single.payload[field] as String;
+
+/// A synthetic Budget month: $500.00 in checking, an Everyday group with
+/// Groceries (a $100.00 Target) and Dining out, $80.00 assigned and $50.00
+/// spent on Dining out, so it is $30.00 overspent.
+final class _MonthSeed {
+  _MonthSeed() {
+    engine.execute(const CreateBudget(name: 'Home'));
+    engine.execute(
+      AddAccount(
+        name: 'Checking',
+        type: AccountType.checking,
+        startingBalance: const Money(50000),
+        asOf: CivilDate(month.year, month.month, 1),
+      ),
+    );
+    group = _id(
+      engine.execute(const CreateCategoryGroup(name: 'Everyday')),
+      'categoryGroupId',
+    );
+    groceries = _id(
+      engine.execute(CreateCategory(groupId: group, name: 'Groceries')),
+      'categoryId',
+    );
+    dining = _id(
+      engine.execute(CreateCategory(groupId: group, name: 'Dining out')),
+      'categoryId',
+    );
+    engine.execute(
+      SetTarget(
+        categoryId: groceries,
+        target: const KeepAtLeastTarget(amount: Money(10000)),
+      ),
+    );
+    assign(groceries, 6000);
+    assign(dining, 2000);
+    engine.execute(
+      CreateTransaction(
+        accountId: engine.state.accounts.single.id,
+        date: CivilDate(month.year, month.month, 2),
+        amount: const Money(-5000),
+        payee: 'Corner Bistro',
+        lines: [LineInput(amount: const Money(-5000), category: dining)],
+      ),
+    );
+  }
+
+  final log = InMemoryEventLog();
+  late final engine = _engine(log);
+  final month = thisMonth();
+  late final String group;
+  late final String groceries;
+  late final String dining;
+
+  void assign(String categoryId, int cents) => engine.execute(
+    SetAssignment(categoryId: categoryId, month: month, amount: Money(cents)),
+  );
+
+  /// The app over the seeded log, as it opens after a restart.
+  Widget app() => BudgetApp(engine: _engine(log));
+
+  BudgetState get state => BudgetState.replay(log.readAll());
+}
+
+Future<void> _pumpAppAt(WidgetTester tester, Size size, Widget app) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  await tester.pumpWidget(BudgetApp(engine: engine));
+  await tester.pumpWidget(app);
   await tester.pumpAndSettle();
 }
 
@@ -164,6 +228,9 @@ void _addGroceries(BudgetEngine engine) {
     ),
   );
 }
+
+Future<void> _pumpAt(WidgetTester tester, Size size, BudgetEngine engine) =>
+    _pumpAppAt(tester, size, BudgetApp(engine: engine));
 
 Finder _sectionRow(Section section) =>
     find.byKey(ValueKey('section-${section.name}'));
@@ -523,5 +590,186 @@ void main() {
     expect(find.byType(MainNav), findsOneWidget);
     expect(_sidebar, findsNothing);
     expect(find.text('Forecast'), findsNothing);
+  });
+
+  testWidgets('the desktop Budget month shows the table, group totals and '
+      'status', (tester) async {
+    final seed = _MonthSeed();
+    await _pumpAppAt(tester, const Size(1280, 820), seed.app());
+
+    // Ready to Assign, with what this month's Overspending takes from next
+    // month.
+    expect(find.text('READY TO ASSIGN'), findsOneWidget);
+    expect(find.text('\$420.00'), findsOneWidget);
+    expect(
+      find.text(
+        '\$30.00 of Overspending comes out of '
+        '${monthName(seed.month.next)}’s Ready to Assign',
+      ),
+      findsOneWidget,
+    );
+
+    // Assigned, Activity and Available above the Categories.
+    for (final label in ['CATEGORY', 'ASSIGNED', 'ACTIVITY', 'AVAILABLE']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+
+    // The group's totals are the sum of its Categories.
+    final group = find.byKey(ValueKey('group-${seed.group}'));
+    for (final total in ['80.00', '−50.00', '30.00']) {
+      expect(
+        find.descendant(of: group, matching: find.text(total)),
+        findsOneWidget,
+        reason: total,
+      );
+    }
+
+    // Each row's pill is the engine's Available.
+    for (final id in [seed.groceries, seed.dining]) {
+      final pill = find.descendant(
+        of: find.byKey(ValueKey('category-$id')),
+        matching: find.byType(AvailablePill),
+      );
+      expect(
+        tester.widget<AvailablePill>(pill).amount,
+        seed.state.available(id, seed.month),
+        reason: id,
+      );
+    }
+
+    // One status line per Category.
+    expect(
+      tester.widget<Text>(find.byKey(ValueKey('status-${seed.dining}'))).data,
+      'Overspent · \$30.00 comes out of ${monthName(seed.month.next)}’s '
+      'Ready to Assign',
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(ValueKey('status-${seed.groceries}')))
+          .data,
+      'Target · 40.00 more needed in ${monthName(seed.month)}',
+    );
+  });
+
+  testWidgets('selecting a Category shows its panel beside the table', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    await _pumpAppAt(tester, const Size(1280, 820), seed.app());
+    expect(find.byKey(const ValueKey('category-panel')), findsNothing);
+
+    await tester.tap(find.byKey(ValueKey('category-${seed.groceries}')));
+    await tester.pumpAndSettle();
+
+    final panel = find.byKey(const ValueKey('category-panel'));
+    final table = find.byKey(const ValueKey('budget-table'));
+    expect(panel, findsOneWidget);
+    // The month stays visible beside the panel.
+    expect(table, findsOneWidget);
+    expect(find.text('READY TO ASSIGN'), findsOneWidget);
+    expect(
+      tester.getTopLeft(panel).dx,
+      greaterThan(tester.getTopLeft(table).dx),
+    );
+
+    // Its Available, Target progress with Edit, and recent activity.
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('panel-available'))).data,
+      '\$60.00',
+    );
+    expect(
+      find.descendant(of: panel, matching: find.text('Edit')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: panel,
+        matching: find.text('Keep at least · \$100.00'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: panel, matching: find.text('Recent activity')),
+      findsOneWidget,
+    );
+
+    // Choosing another Category swaps the panel in place.
+    await tester.tap(find.byKey(ValueKey('category-${seed.dining}')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('panel-available'))).data,
+      '−\$30.00',
+    );
+    expect(
+      find.descendant(of: panel, matching: find.text('Corner Bistro')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byTooltip('Close panel'));
+    await tester.pumpAndSettle();
+    expect(panel, findsNothing);
+  });
+
+  testWidgets('changing Automation Mode in the panel records an Event', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    await _pumpAppAt(tester, const Size(1280, 820), seed.app());
+    await tester.tap(find.byKey(ValueKey('category-${seed.groceries}')));
+    await tester.pumpAndSettle();
+
+    expect(seed.state.automationMode(seed.groceries), AutomationMode.suggest);
+    await tester.tap(find.text('Auto'));
+    await tester.pumpAndSettle();
+
+    // The Event is the state change (ADR 0001), and the panel shows the mode.
+    expect(seed.state.automationMode(seed.groceries), AutomationMode.auto);
+    final events = [
+      for (final event in seed.log.readAll())
+        if (event.type == EventType.automationModeSet) event,
+    ];
+    expect(events, hasLength(1));
+    expect(events.single.payload['categoryId'], seed.groceries);
+    expect(events.single.payload['mode'], 'auto');
+    expect(
+      find.text(
+        'Assigns to its Target on each run. Saved to Change History as '
+        'automation.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a narrow window wraps the panel below the table', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    await _pumpAppAt(tester, const Size(900, 820), seed.app());
+    await tester.tap(find.byKey(ValueKey('category-${seed.dining}')));
+    await tester.pumpAndSettle();
+
+    final table = find.byKey(const ValueKey('budget-table'));
+    final panel = find.byKey(const ValueKey('category-panel'));
+    expect(panel, findsOneWidget);
+    expect(
+      tester.getTopLeft(panel).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(table).dy),
+    );
+  });
+
+  testWidgets('the phone Budget month keeps its list', (tester) async {
+    final seed = _MonthSeed();
+    await _pumpAt(tester, const Size(800, 900), seed.engine);
+
+    // No wide table, no side panel, and the same column labels as before.
+    expect(find.byKey(const ValueKey('budget-table')), findsNothing);
+    expect(find.byKey(const ValueKey('category-panel')), findsNothing);
+    expect(find.text('ACTIVITY'), findsNothing);
+    expect(find.text('AVAILABLE'), findsOneWidget);
+
+    // A Category still opens its own screen.
+    await tester.tap(find.text('Groceries'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Back to budget'), findsOneWidget);
   });
 }
