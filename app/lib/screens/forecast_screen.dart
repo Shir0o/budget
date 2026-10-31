@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../settings_widgets.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'forecast_desktop.dart';
 import 'transaction_parts.dart';
 
 /// The next 12 months of scheduled transactions (canvas: Forecast): what
@@ -16,6 +17,11 @@ class ForecastScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A Mac window shows the predicted balance as a chart with Coming up
+    // beside it (ticket 67). The phone keeps its month-by-month list.
+    if (DesktopWindowScope.maybeOf(context) != null) {
+      return DesktopForecastScreen(engine: engine);
+    }
     final state = engine.state;
     final forecast = Forecast.of(state, start: thisMonth());
     final short = forecast.underfunded;

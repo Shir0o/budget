@@ -9,6 +9,7 @@ import '../settings_widgets.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'business_parts.dart';
+import 'business_report_desktop.dart';
 
 /// Business report (canvas: Business report): one tax year's Business Tags,
 /// warnings, totals, every tagged line, and the two CSV files. The files are
@@ -57,21 +58,16 @@ class _BusinessReportScreenState extends State<BusinessReportScreen> {
     }
   }
 
-  String _warningText(BusinessWarning warning, int year) => switch (warning) {
-    UnreviewedLines(:final count) =>
-      '$count Unreviewed ${count == 1 ? 'line' : 'lines'} in $year. Review '
-          '${count == 1 ? 'it' : 'them'} before relying on this report.',
-    MissingBusinessUse(:final tag) =>
-      'Set a business-use % for ${tag.name} in $year.',
-    GiftWithoutRecipient(:final line) =>
-      'A gift to '
-          '${line.transaction.payee.isEmpty ? 'no payee' : line.transaction.payee} '
-          'on ${formatDate(line.transaction.date)} has no recipient, so it '
-          'doesn’t count.',
-  };
-
   @override
   Widget build(BuildContext context) {
+    // A Mac window shows the year's totals with the selected tag's lines
+    // beside them (ticket 67). The phone keeps its one column.
+    if (DesktopWindowScope.maybeOf(context) != null) {
+      return DesktopBusinessReportScreen(
+        engine: widget.engine,
+        services: widget.services,
+      );
+    }
     final state = _state;
     final report = state.businessReport(_year);
     final years = businessYears(state);
@@ -128,7 +124,7 @@ class _BusinessReportScreenState extends State<BusinessReportScreen> {
                                 ),
                                 Expanded(
                                   child: Text(
-                                    _warningText(warning, report.year),
+                                    businessWarningText(warning, report.year),
                                     style: const TextStyle(
                                       fontSize: 13,
                                       height: 1.4,
@@ -236,6 +232,24 @@ class _BusinessReportScreenState extends State<BusinessReportScreen> {
     );
   }
 }
+
+/// What a Business warning says, in a sentence. The desktop report shows the
+/// same warnings beside its totals (ticket 67).
+String businessWarningText(
+  BusinessWarning warning,
+  int year,
+) => switch (warning) {
+  UnreviewedLines(:final count) =>
+    '$count Unreviewed ${count == 1 ? 'line' : 'lines'} in $year. Review '
+        '${count == 1 ? 'it' : 'them'} before relying on this report.',
+  MissingBusinessUse(:final tag) =>
+    'Set a business-use % for ${tag.name} in $year.',
+  GiftWithoutRecipient(:final line) =>
+    'A gift to '
+        '${line.transaction.payee.isEmpty ? 'no payee' : line.transaction.payee} '
+        'on ${formatDate(line.transaction.date)} has no recipient, so it '
+        'doesn’t count.',
+};
 
 class _CardHeader extends StatelessWidget {
   const _CardHeader(this.text);

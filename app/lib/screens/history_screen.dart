@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'as_of_date_screen.dart';
+import 'history_desktop.dart';
 import 'redact_screen.dart';
 import 'revert_conflict_sheet.dart';
 
@@ -20,7 +21,9 @@ class HistoryScreen extends StatefulWidget {
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-const _actorChips = [
+/// The Actor chips Change History filters by, on the phone and in a Mac
+/// window alike (ticket 67).
+const actorChips = [
   (null, 'All'),
   (ActorKind.person, 'You'),
   (ActorKind.bankSync, 'Bank sync'),
@@ -53,7 +56,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) =>
+      // A Mac window groups the same entries by day, with an Actor filter
+      // and a Go back to a date button (ticket 67).
+      DesktopWindowScope.maybeOf(context) != null
+      ? DesktopHistoryScreen(
+          engine: widget.engine,
+          actor: widget.actor,
+          onGoBack: _goBack,
+        )
+      : _phone();
+
+  /// The phone's Change History: one list with the Actor chips over it.
+  Widget _phone() => Scaffold(
     bottomNavigationBar: MainNav(
       current: Section.history,
       engine: widget.engine,
@@ -99,7 +114,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 Wrap(
                   spacing: 6,
                   children: [
-                    for (final (kind, label) in _actorChips)
+                    for (final (kind, label) in actorChips)
                       SelectChip(
                         label: label,
                         selected: _actor == kind,
