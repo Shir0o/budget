@@ -2,9 +2,11 @@ import 'package:budget_core/budget_core.dart';
 import 'package:budget_simplefin/budget_simplefin.dart';
 import 'package:budget_sync/budget_sync.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'budget_library.dart';
 import 'desktop.dart';
+import 'desktop_menu.dart';
 import 'flows.dart';
 import 'screens/account_register_screen.dart';
 import 'screens/add_account_screen.dart';
@@ -34,6 +36,17 @@ class _DesktopShellState extends State<DesktopShell> {
   /// The content area's Navigator: what a section and the screens it opens
   /// run in.
   final _contentKey = GlobalKey<NavigatorState>();
+
+  /// The toolbar's search field, which Cmd+F focuses (ticket 69).
+  final _searchFocus = FocusNode();
+
+  /// Whether the window is at desktop width and is the one on screen: only
+  /// then do its menu items and keys act (ticket 69).
+  var _windowed = false;
+  var _current = true;
+
+  /// The app's menu bar, which this window answers while it is showing.
+  DesktopCommands? _commands;
   var _section = Section.budget;
   var _month = thisMonth();
   var _syncBook = SyncBook.off;
@@ -50,6 +63,7 @@ class _DesktopShellState extends State<DesktopShell> {
     // notification and every state change is an Event (ADR 0001), so each
     // frame compares the state object it replayed: a new one means a change.
     _watchNextFrame();
+    HardwareKeyboard.instance.addHandler(_onKey);
   }
 
   void _watchNextFrame() {
@@ -61,9 +75,22 @@ class _DesktopShellState extends State<DesktopShell> {
   }
 
   @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
+    // A window that another one replaced leaves the menu bar to it.
+    if (_commands?.run == _run) _commands!.run = null;
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _library = BudgetLibraryScope.of(context);
+    final commands = DesktopCommandsScope.maybeOf(context);
+    if (commands != null && commands != _commands) {
+      _commands = commands..run = _run;
+    }
     if (_booksRead) return;
     _booksRead = true;
     _readBooks();
@@ -214,6 +241,98 @@ class _DesktopShellState extends State<DesktopShell> {
     ].join(' · ');
   }
 
+  /// Does what a menu item or its key does: the same action as the toolbar or
+  /// sidebar button of that name (ticket 69).
+  void _run(DesktopAction action) {
+    // The phone layout has none of the window's parts to act on.
+    if (!_windowed) return;
+    // A sheet or a screen over the section keeps the window's keys to itself.
+    if (action != DesktopAction.search &&
+        (_contentKey.currentState?.canPop() ?? false)) {
+      return;
+    }
+    if (action.section case final section?) {
+      _go(section);
+      return;
+    }
+    switch (action) {
+      case DesktopAction.newBudget:
+        _newBudget();
+      case DesktopAction.manageBudgets:
+        _manageBudgets();
+      case DesktopAction.newAccount:
+        _addAccount();
+      case DesktopAction.settings:
+        _openSettings();
+      case DesktopAction.undo:
+        _undo();
+      case DesktopAction.search:
+        _searchFocus.requestFocus();
+      case DesktopAction.previousMonth:
+        setState(() => _month = _month.previous);
+      case DesktopAction.nextMonth:
+        setState(() => _month = _month.next);
+      case DesktopAction.newTransaction:
+        _newTransaction();
+      case DesktopAction.goToReview:
+        _go(Section.review);
+      // The View menu's sections, run above.
+      case DesktopAction.sectionBudget ||
+          DesktopAction.sectionReview ||
+          DesktopAction.sectionAccounts ||
+          DesktopAction.sectionHistory ||
+          DesktopAction.sectionForecast ||
+          DesktopAction.sectionBusinessReport:
+        break;
+    }
+  }
+
+  /// Undo: reverts the person's latest change through Change History, so the
+  /// undo is itself an Event (ADR 0001). With nothing of theirs left to
+  /// revert it does nothing; a change that was edited again opens Change
+  /// History, where reverting it is a choice (ticket 11).
+  void _undo() {
+    final engine = _library!.current;
+    final entry = engine.history
+        .entries(filter: const HistoryFilter(actors: {ActorKind.person}))
+        .where((entry) => !entry.isRevert && entry.canRevert)
+        .where((entry) => entry.revertedBy == null)
+        .firstOrNull;
+    if (entry == null) return;
+    if (engine.history.planRevert(entry.groupId)?.appliesRightAway != true) {
+      _go(Section.history);
+      return;
+    }
+    engine.execute(RevertGroup(groupId: entry.groupId));
+  }
+
+  /// The window's keys (ticket 69): each runs the action its menu item does.
+  /// A window at phone width, or one a route covers, answers none of them.
+  bool _onKey(KeyEvent event) {
+    if (event is! KeyDownEvent || !_windowed || !_current) return false;
+    final keyboard = HardwareKeyboard.instance;
+    final action = DesktopAction.values
+        .where((action) => action.shortcut?.accepts(event, keyboard) ?? false)
+        .firstOrNull;
+    if (action == null) return false;
+    // A field being typed in keeps its own keys, Cmd+Z included.
+    if (action != DesktopAction.search && _typing) return false;
+    _run(action);
+    return true;
+  }
+
+  /// Whether the person is typing in a text field.
+  bool get _typing {
+    var typing = false;
+    FocusManager.instance.primaryFocus?.context?.visitAncestorElements((
+      element,
+    ) {
+      typing = element.widget is EditableText;
+      return !typing;
+    });
+    return typing;
+  }
+
   @override
   Widget build(BuildContext context) {
     final library = BudgetLibraryScope.of(context);
@@ -222,56 +341,72 @@ class _DesktopShellState extends State<DesktopShell> {
     // Welcome fills the window: there is nothing to navigate yet.
     if (engine.state.budget == null) return WelcomeScreen(engine: engine);
     return LayoutBuilder(
-      builder: (context, constraints) =>
-          constraints.maxWidth < desktopBreakpoint
-          ? Section.budget.screen(engine, services)
-          : DesktopWindowScope(
+      builder: (context, constraints) {
+        _windowed = constraints.maxWidth >= desktopBreakpoint;
+        return _windowed
+            ? _window(engine, services, library)
+            : Section.budget.screen(engine, services);
+      },
+    );
+  }
+
+  /// The Mac window (ticket 61). Its menu bar is the app's, and its keys run
+  /// the same [DesktopAction]s, so a menu item, its shortcut and the button
+  /// of that name do one thing (ticket 69). A window another route covers,
+  /// as Welcome covers it for a new budget, keeps the keys to itself.
+  Widget _window(
+    BudgetEngine engine,
+    AppServices services,
+    BudgetLibrary library,
+  ) {
+    _current = ModalRoute.of(context)?.isCurrent ?? true;
+    return DesktopWindowScope(
+      month: _month,
+      onMonthChanged: (month) => setState(() => _month = month),
+      state: engine.state,
+      child: Scaffold(
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _Toolbar(
+              name: engine.state.budget!.name,
+              budgets: library.entries,
+              state: engine.state,
               month: _month,
               onMonthChanged: (month) => setState(() => _month = month),
-              state: engine.state,
-              child: Scaffold(
-                body: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _Toolbar(
-                      name: engine.state.budget!.name,
-                      budgets: library.entries,
-                      state: engine.state,
-                      month: _month,
-                      onMonthChanged: (month) => setState(() => _month = month),
-                      onOpenBudget: _openBudget,
-                      onNewBudget: _newBudget,
-                      onManageBudgets: _manageBudgets,
-                      onOpenTransaction: _openTransaction,
-                      onNewTransaction: _newTransaction,
-                      onSettings: _openSettings,
+              onOpenBudget: _openBudget,
+              onNewBudget: _newBudget,
+              onManageBudgets: _manageBudgets,
+              onOpenTransaction: _openTransaction,
+              onNewTransaction: _newTransaction,
+              onSettings: _openSettings,
+              searchFocus: _searchFocus,
+            ),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Sidebar(
+                    state: engine.state,
+                    section: _section,
+                    onSection: _go,
+                    onAccount: _openAccount,
+                    onAddAccount: _addAccount,
+                    sync: _syncText,
+                  ),
+                  Expanded(
+                    child: Navigator(
+                      key: _contentKey,
+                      onGenerateRoute: (_) =>
+                          _sectionRoute(engine, services, _section),
                     ),
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _Sidebar(
-                            state: engine.state,
-                            section: _section,
-                            onSection: _go,
-                            onAccount: _openAccount,
-                            onAddAccount: _addAccount,
-                            sync: _syncText,
-                          ),
-                          Expanded(
-                            child: Navigator(
-                              key: _contentKey,
-                              onGenerateRoute: (_) =>
-                                  _sectionRoute(engine, services, _section),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -291,6 +426,7 @@ class _Toolbar extends StatelessWidget {
     required this.onOpenTransaction,
     required this.onNewTransaction,
     required this.onSettings,
+    required this.searchFocus,
   });
 
   final String name;
@@ -306,6 +442,9 @@ class _Toolbar extends StatelessWidget {
   final ValueChanged<Transaction> onOpenTransaction;
   final VoidCallback onNewTransaction;
   final VoidCallback onSettings;
+
+  /// Where Cmd+F puts the cursor (ticket 69).
+  final FocusNode searchFocus;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -333,6 +472,7 @@ class _Toolbar extends StatelessWidget {
           _ToolbarSearch(
             state: state,
             onOpen: onOpenTransaction,
+            focusNode: searchFocus,
             width: constraints.maxWidth < 1100 ? 160 : 240,
           ),
           FilledButton.icon(
@@ -364,11 +504,15 @@ class _ToolbarSearch extends StatefulWidget {
   const _ToolbarSearch({
     required this.state,
     required this.onOpen,
+    required this.focusNode,
     required this.width,
   });
 
   final BudgetState state;
   final ValueChanged<Transaction> onOpen;
+
+  /// The window's handle on the field, for Cmd+F.
+  final FocusNode focusNode;
 
   /// How wide the field may be; it narrows near the desktop breakpoint.
   final double width;
@@ -424,6 +568,7 @@ class _ToolbarSearchState extends State<_ToolbarSearch> {
       child: TextField(
         key: const ValueKey('toolbar-search'),
         controller: controller,
+        focusNode: widget.focusNode,
         onTap: controller.openView,
         style: const TextStyle(fontSize: 14),
         decoration: const InputDecoration(

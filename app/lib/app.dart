@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'app_lock_gate.dart';
 import 'budget_library.dart';
+import 'desktop_menu.dart';
 import 'services.dart';
 import 'shell.dart';
 import 'theme.dart';
@@ -36,7 +37,9 @@ class BudgetApp extends StatelessWidget {
       library: library,
       child: AppServicesScope(
         services: services,
-        child: AppLockGate(services: services, child: child!),
+        child: DesktopMenuHost(
+          child: AppLockGate(services: services, child: child!),
+        ),
       ),
     ),
     home: const DesktopShell(),
