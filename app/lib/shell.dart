@@ -143,7 +143,52 @@ class _DesktopShellState extends State<DesktopShell> {
     builder: (_) => NewTransactionScreen(engine: _library!.current),
   );
 
-  Future<void> _switchBudget() => showBudgetSwitcher(_content);
+  /// Opens another Budget in this window (ticket 68). Its section screens were
+  /// built for the old engine, so the content area starts again on the Budget
+  /// month of the one chosen.
+  Future<void> _openBudget(String id) async {
+    final library = _library!;
+    if (library.entries.any((entry) => entry.id == id && entry.isOpen)) return;
+    final engine = await library.switchTo(id);
+    if (!mounted) return;
+    _contentKey.currentState?.pushAndRemoveUntil(
+      _sectionRoute(engine, AppServicesScope.of(context), Section.budget),
+      (_) => false,
+    );
+    setState(() {
+      _engine = engine;
+      _state = engine.state;
+      _section = Section.budget;
+    });
+    await _readBooks();
+  }
+
+  /// A new Budget is a draft until its first account is saved, which commits
+  /// it and opens this window on it (as the Welcome flow already does).
+  Future<void> _newBudget() => Navigator.of(context, rootNavigator: true).push(
+    MaterialPageRoute<void>(
+      builder: (_) => WelcomeScreen(engine: _library!.startNew()),
+    ),
+  );
+
+  /// Settings is where Budgets are renamed, archived and made (ticket 66).
+  Future<void> _manageBudgets() => _openSettings();
+
+  /// A search result: a line still to Review opens Review, where the person
+  /// can finish it; anything else opens its account's register.
+  Future<void> _openTransaction(Transaction transaction) async {
+    final state = _library!.current.state;
+    final needsReview = state.reviewQueue.any(
+      (item) => item.transaction.id == transaction.id,
+    );
+    if (needsReview) {
+      _go(Section.review);
+      return;
+    }
+    final account = state.account(transaction.accountId);
+    if (account == null) return;
+    await _openAccount(account);
+  }
 
   Future<void> _openSettings() async {
     await _contentKey.currentState!.push(
@@ -187,9 +232,14 @@ class _DesktopShellState extends State<DesktopShell> {
                   children: [
                     _Toolbar(
                       name: engine.state.budget!.name,
+                      budgets: library.entries,
+                      state: engine.state,
                       month: _month,
                       onMonthChanged: (month) => setState(() => _month = month),
-                      onSwitchBudget: _switchBudget,
+                      onOpenBudget: _openBudget,
+                      onNewBudget: _newBudget,
+                      onManageBudgets: _manageBudgets,
+                      onOpenTransaction: _openTransaction,
                       onNewTransaction: _newTransaction,
                       onSettings: _openSettings,
                     ),
@@ -223,21 +273,34 @@ class _DesktopShellState extends State<DesktopShell> {
   }
 }
 
-/// The budget name, the month, New transaction and Settings.
+/// The budget name and its switcher popover, the month, search, New
+/// transaction and Settings.
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.name,
+    required this.budgets,
+    required this.state,
     required this.month,
     required this.onMonthChanged,
-    required this.onSwitchBudget,
+    required this.onOpenBudget,
+    required this.onNewBudget,
+    required this.onManageBudgets,
+    required this.onOpenTransaction,
     required this.onNewTransaction,
     required this.onSettings,
   });
 
   final String name;
+  final List<BudgetEntry> budgets;
+
+  /// The open budget, for search.
+  final BudgetState state;
   final CalendarMonth month;
   final ValueChanged<CalendarMonth> onMonthChanged;
-  final VoidCallback onSwitchBudget;
+  final ValueChanged<String> onOpenBudget;
+  final VoidCallback onNewBudget;
+  final VoidCallback onManageBudgets;
+  final ValueChanged<Transaction> onOpenTransaction;
   final VoidCallback onNewTransaction;
   final VoidCallback onSettings;
 
@@ -252,33 +315,16 @@ class _Toolbar extends StatelessWidget {
     child: Row(
       spacing: 12,
       children: [
-        Semantics(
-          button: true,
-          label: 'Switch budget',
-          child: InkWell(
-            onTap: onSwitchBudget,
-            borderRadius: BorderRadius.circular(8),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 40),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                spacing: 6,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Icon(Icons.keyboard_arrow_down, size: 16),
-                ],
-              ),
-            ),
-          ),
+        BudgetSwitcherMenu(
+          name: name,
+          entries: budgets,
+          onOpen: onOpenBudget,
+          onNew: onNewBudget,
+          onManage: onManageBudgets,
         ),
         const Spacer(),
         MonthSwitcher(month: month, onChanged: onMonthChanged),
+        _ToolbarSearch(state: state, onOpen: onOpenTransaction),
         FilledButton.icon(
           onPressed: onNewTransaction,
           icon: const Icon(Icons.add, size: 18),
@@ -299,6 +345,162 @@ class _Toolbar extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// The toolbar's search field: every transaction whose payee or memo contains
+/// what was typed, newest first. Choosing one opens it (ticket 68).
+class _ToolbarSearch extends StatefulWidget {
+  const _ToolbarSearch({required this.state, required this.onOpen});
+
+  final BudgetState state;
+  final ValueChanged<Transaction> onOpen;
+
+  @override
+  State<_ToolbarSearch> createState() => _ToolbarSearchState();
+}
+
+class _ToolbarSearchState extends State<_ToolbarSearch> {
+  final _controller = SearchController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Iterable<Widget> _suggestions(SearchController controller) {
+    final query = controller.text.trim();
+    if (query.isEmpty) {
+      return const [_SearchNote('Search payees and memos')];
+    }
+    final results = _findTransactions(widget.state, query);
+    if (results.isEmpty) {
+      return const [_SearchNote('No matching transactions')];
+    }
+    return [
+      for (final transaction in results)
+        _SearchResult(
+          transaction: transaction,
+          account: widget.state.account(transaction.accountId)?.name ?? '',
+          needsReview: widget.state.reviewQueue.any(
+            (item) => item.transaction.id == transaction.id,
+          ),
+          onTap: () {
+            controller.closeView(null);
+            // The field starts empty the next time it is opened.
+            controller.clear();
+            widget.onOpen(transaction);
+          },
+        ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) => SearchAnchor(
+    searchController: _controller,
+    // A floating view beside the window, as a Mac search field behaves.
+    isFullScreen: false,
+    viewHintText: 'Search payees and memos',
+    builder: (context, controller) => SizedBox(
+      width: 240,
+      child: TextField(
+        key: const ValueKey('toolbar-search'),
+        controller: controller,
+        onTap: controller.openView,
+        style: const TextStyle(fontSize: 14),
+        decoration: const InputDecoration(
+          hintText: 'Search',
+          prefixIcon: Icon(Icons.search, size: 18),
+          prefixIconConstraints: BoxConstraints(minWidth: 34),
+        ),
+      ),
+    ),
+    suggestionsBuilder: (context, controller) => _suggestions(controller),
+  );
+}
+
+/// One search result: its payee, the date and account, and its amount.
+class _SearchResult extends StatelessWidget {
+  const _SearchResult({
+    required this.transaction,
+    required this.account,
+    required this.needsReview,
+    required this.onTap,
+  });
+
+  final Transaction transaction;
+  final String account;
+  final bool needsReview;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = transaction;
+    return InkWell(
+      key: ValueKey('search-${t.id}'),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          spacing: 12,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 2,
+                children: [
+                  Text(
+                    t.payee.isEmpty ? 'No payee' : t.payee,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 15),
+                  ),
+                  Text(
+                    [
+                      formatDay(t.date),
+                      account,
+                      if (needsReview) 'To review',
+                    ].join(' · '),
+                    style: const TextStyle(fontSize: 12, color: Palette.muted),
+                  ),
+                ],
+              ),
+            ),
+            Text(formatSigned(t.amount), style: amountStyle(fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// What the search view says when there is nothing to list.
+class _SearchNote extends StatelessWidget {
+  const _SearchNote(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+    child: Text(
+      text,
+      style: const TextStyle(fontSize: 13, color: Palette.muted),
+    ),
+  );
+}
+
+/// Every transaction whose payee or memo contains [query], newest first.
+List<Transaction> _findTransactions(BudgetState state, String query) {
+  final needle = query.toLowerCase();
+  bool matches(String value) => value.toLowerCase().contains(needle);
+  return [
+    for (final transaction in state.transactions)
+      if (matches(transaction.payee) ||
+          matches(transaction.memo) ||
+          transaction.lines.any((line) => matches(line.memo)))
+        transaction,
+  ]..sort((a, b) => b.date.compareTo(a.date));
 }
 
 /// Every section, then the budget accounts with their total, Tracking Accounts
