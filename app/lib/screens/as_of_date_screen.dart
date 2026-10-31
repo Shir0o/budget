@@ -66,7 +66,11 @@ class _AsOfDateScreenState extends State<AsOfDateScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _ReadOnlyBar(date: _date),
+          _ReadOnlyBar(
+            date: _date,
+            // A Mac window calls leaving the read-only budget Back to today.
+            desktop: DesktopWindowScope.maybeOf(context) != null,
+          ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -236,11 +240,15 @@ class _AsOfDateScreenState extends State<AsOfDateScreen> {
   }
 }
 
-/// `Viewing Oct 31, 2026 · read-only` and Exit, on dark.
+/// `Viewing Oct 31, 2026 · read-only` and Exit — Back to today on a Mac,
+/// where the budget behind the bar is the whole window — on dark.
 class _ReadOnlyBar extends StatelessWidget {
-  const _ReadOnlyBar({required this.date});
+  const _ReadOnlyBar({required this.date, this.desktop = false});
 
   final CivilDate date;
+
+  /// A Mac window's bar offers Back to today instead of Exit.
+  final bool desktop;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -285,7 +293,7 @@ class _ReadOnlyBar extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                child: const Text('Exit'),
+                child: Text(desktop ? 'Back to today' : 'Exit'),
               ),
             ],
           ),

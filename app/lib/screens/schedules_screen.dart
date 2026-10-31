@@ -6,6 +6,7 @@ import '../settings_widgets.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'edit_schedule_screen.dart';
+import 'schedules_desktop.dart';
 import 'target_parts.dart';
 
 /// Scheduled transactions (canvas: Scheduled transactions): what is coming
@@ -31,6 +32,11 @@ class _SchedulesScreenState extends State<SchedulesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // A Mac window shows one table of next date, payee, repeat, account,
+    // Category and amount (ticket 67). The phone keeps its list.
+    if (DesktopWindowScope.maybeOf(context) != null) {
+      return DesktopSchedulesView(engine: widget.engine);
+    }
     final state = _state;
     final schedules = state.schedules;
     final suggestions = state.recurringSuggestions();
