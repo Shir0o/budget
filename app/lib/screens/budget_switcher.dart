@@ -6,6 +6,93 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'welcome_screen.dart';
 
+/// The desktop toolbar's budget name, which opens a popover of every Budget
+/// with the open one checked, then New budget… and Manage budgets… (ticket
+/// 68). It lists the same budgets and actions as the sheet.
+class BudgetSwitcherMenu extends StatelessWidget {
+  const BudgetSwitcherMenu({
+    super.key,
+    required this.name,
+    required this.entries,
+    required this.onOpen,
+    required this.onNew,
+    required this.onManage,
+  });
+
+  final String name;
+  final List<BudgetEntry> entries;
+  final ValueChanged<String> onOpen;
+  final VoidCallback onNew;
+  final VoidCallback onManage;
+
+  @override
+  Widget build(BuildContext context) => MenuAnchor(
+    menuChildren: [
+      for (final entry in entries)
+        Semantics(
+          selected: entry.isOpen,
+          child: MenuItemButton(
+            key: ValueKey('budget-${entry.id}'),
+            onPressed: () => onOpen(entry.id),
+            leadingIcon: SizedBox(
+              width: 16,
+              height: 16,
+              child: entry.isOpen
+                  ? Icon(
+                      Icons.check,
+                      key: ValueKey('budget-check-${entry.id}'),
+                      size: 16,
+                      color: Palette.teal,
+                    )
+                  : null,
+            ),
+            child: SizedBox(
+              width: 180,
+              child: Text(
+                entry.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ),
+      const Divider(height: 9),
+      MenuItemButton(onPressed: onNew, child: const Text('New budget…')),
+      MenuItemButton(onPressed: onManage, child: const Text('Manage budgets…')),
+    ],
+    builder: (context, controller, _) => Semantics(
+      button: true,
+      label: 'Switch budget',
+      child: InkWell(
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
+        borderRadius: BorderRadius.circular(8),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 40),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 6,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 160),
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Icon(Icons.keyboard_arrow_down, size: 16),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 /// The budget switcher (canvas: BudgetSwitcher), a bottom sheet over the
 /// Budget screen. Picking a budget opens it; "New budget" goes through the
 /// Welcome flow.

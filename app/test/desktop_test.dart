@@ -1,4 +1,5 @@
 import 'package:budget/app.dart';
+import 'package:budget/budget_library.dart';
 import 'package:budget/screens/account_register_screen.dart';
 import 'package:budget/screens/accounts_screen.dart';
 import 'package:budget/screens/budget_screen.dart';
@@ -6,7 +7,9 @@ import 'package:budget/screens/business_report_screen.dart';
 import 'package:budget/screens/forecast_screen.dart';
 import 'package:budget/screens/history_screen.dart';
 import 'package:budget/screens/review_screen.dart';
+import 'package:budget/screens/settings_screen.dart';
 import 'package:budget/screens/welcome_screen.dart';
+import 'package:budget/services.dart';
 import 'package:budget/theme.dart';
 import 'package:budget/widgets.dart';
 import 'package:budget_core/budget_core.dart';
@@ -80,6 +83,86 @@ Future<void> _pumpAt(
   addTearDown(tester.view.reset);
   await tester.pumpWidget(BudgetApp(engine: engine));
   await tester.pumpAndSettle();
+}
+
+/// A device with two saved synthetic budgets, the first one open.
+Future<(BudgetLibrary, AppServices)> _twoBudgets(WidgetTester tester) async {
+  final services = AppServices.inMemory();
+  final library = await tester.runAsync(() async {
+    final library = await BudgetLibrary.load(
+      storage: InMemoryBudgetStorage(),
+      prefs: services.prefs,
+      deviceId: 'test-device',
+      actor: Actor.userAndroid,
+    );
+    for (final (name, cents) in [
+      ('Personal', 41200),
+      ('Side business', 9900),
+    ]) {
+      final draft = library.startNew();
+      draft.execute(CreateBudget(name: name));
+      draft.execute(
+        AddAccount(
+          name: 'Checking',
+          type: AccountType.checking,
+          startingBalance: Money(cents),
+          asOf: today(),
+        ),
+      );
+      await library.commit(draft);
+    }
+    await library.switchTo(library.entries.first.id);
+    return library;
+  });
+  return (library!, services);
+}
+
+Future<void> _pumpLibraryAt(
+  WidgetTester tester,
+  Size size,
+  BudgetLibrary library,
+  AppServices services,
+) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(BudgetApp(library: library, services: services));
+  await tester.pumpAndSettle();
+}
+
+/// Adds a Reviewed "Green Grocer" line with the memo "Weekly shop" to
+/// [_home]'s checking account, so search has something to find.
+void _addGroceries(BudgetEngine engine) {
+  final group =
+      (engine.execute(
+            const CreateCategoryGroup(name: 'Everyday'),
+          ) as Accepted).events.single.payload['categoryGroupId']
+          as String;
+  engine.execute(CreateCategory(groupId: group, name: 'Groceries'));
+  final checking = _account(engine, 'Checking');
+  engine.execute(
+    CreateTransaction(
+      accountId: checking.id,
+      date: today(),
+      amount: const Money(-2500),
+      payee: 'Green Grocer',
+      memo: 'Weekly shop',
+      lines: [const LineInput(amount: Money(-2500))],
+    ),
+  );
+  final shop = engine.state.transactions.firstWhere(
+    (transaction) => transaction.payee == 'Green Grocer',
+  );
+  engine.execute(
+    ReviewLine(
+      transactionId: shop.id,
+      lineId: shop.lines.single.id,
+      category: engine.state.categories
+          .firstWhere((category) => category.name == 'Groceries')
+          .id,
+      business: const Personal(),
+    ),
+  );
 }
 
 Finder _sectionRow(Section section) =>
@@ -308,6 +391,127 @@ void main() {
     expect(_sidebar, findsOneWidget);
     expect(find.text('READY TO ASSIGN'), findsOneWidget);
     expect(_inSidebar('Checking'), findsOneWidget);
+  });
+
+  testWidgets('the budget name opens a popover that switches budgets', (
+    tester,
+  ) async {
+    final (library, services) = await _twoBudgets(tester);
+    await _pumpLibraryAt(tester, const Size(1280, 820), library, services);
+    final (personal, side) = (library.entries.first, library.entries.last);
+
+    // The toolbar shows the open budget's name.
+    expect(find.text('Personal'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('budget-accounts-total')))
+          .data,
+      const Money(41200).format(),
+    );
+
+    await tester.tap(find.text('Personal'));
+    await tester.pumpAndSettle();
+
+    // Every budget, with the open one checked, then the two actions.
+    expect(find.text('Side business'), findsOneWidget);
+    expect(find.byKey(ValueKey('budget-check-${personal.id}')), findsOneWidget);
+    expect(find.byKey(ValueKey('budget-check-${side.id}')), findsNothing);
+    expect(find.text('New budget…'), findsOneWidget);
+    expect(find.text('Manage budgets…'), findsOneWidget);
+
+    await tester.tap(find.text('Side business'));
+    await tester.pumpAndSettle();
+
+    // The window is on the other budget, and the popover is closed.
+    expect(find.text('New budget…'), findsNothing);
+    expect(library.current.state.budget?.name, 'Side business');
+    expect(find.text('Side business'), findsOneWidget);
+    expect(find.text('Personal'), findsNothing);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('budget-accounts-total')))
+          .data,
+      const Money(9900).format(),
+    );
+    expect(find.byType(BudgetScreen), findsOneWidget);
+  });
+
+  testWidgets('the popover opens New budget and Manage budgets', (
+    tester,
+  ) async {
+    final (library, services) = await _twoBudgets(tester);
+    await _pumpLibraryAt(tester, const Size(1280, 820), library, services);
+
+    await tester.tap(find.text('Personal'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New budget…'));
+    await tester.pumpAndSettle();
+
+    // A new budget goes through Welcome and leaves the others alone.
+    expect(find.text('Give every dollar a job'), findsOneWidget);
+    expect(library.entries, hasLength(2));
+  });
+
+  testWidgets('Manage budgets opens Settings', (tester) async {
+    final (library, services) = await _twoBudgets(tester);
+    await _pumpLibraryAt(tester, const Size(1280, 820), library, services);
+
+    await tester.tap(find.text('Personal'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manage budgets…'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsScreen), findsOneWidget);
+  });
+
+  testWidgets('the toolbar search finds a transaction by payee or memo', (
+    tester,
+  ) async {
+    final engine = _home();
+    _addGroceries(engine);
+    await _pumpAt(tester, const Size(1280, 820), engine);
+
+    Future<void> search(String text) async {
+      await tester.enterText(
+        find.byKey(const ValueKey('toolbar-search')),
+        text,
+      );
+      await tester.tap(find.byKey(const ValueKey('toolbar-search')));
+      await tester.pumpAndSettle();
+    }
+
+    // A memo finds its transaction, and only that one.
+    await search('weekly');
+    expect(find.text('Green Grocer'), findsOneWidget);
+    expect(find.text('Paper & Co.'), findsNothing);
+    expect(find.text('Cafe'), findsNothing);
+
+    final shop = engine.state.transactions.firstWhere(
+      (transaction) => transaction.payee == 'Green Grocer',
+    );
+    await tester.tap(find.byKey(ValueKey('search-${shop.id}')));
+    await tester.pumpAndSettle();
+
+    // A Reviewed line opens in its register.
+    expect(find.byType(AccountRegisterScreen), findsOneWidget);
+    expect(find.text('Green Grocer'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+
+    // A payee finds it too, and a line still to Review opens Review.
+    await search('paper');
+    expect(find.text('Paper & Co.'), findsOneWidget);
+    expect(find.text('Cafe'), findsNothing);
+
+    final paper = engine.state.transactions.firstWhere(
+      (transaction) => transaction.payee == 'Paper & Co.',
+    );
+    await tester.tap(find.byKey(ValueKey('search-${paper.id}')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ReviewScreen), findsOneWidget);
+    expect(find.text('Paper & Co.'), findsOneWidget);
   });
 
   testWidgets('a phone window is unchanged', (tester) async {
