@@ -568,27 +568,46 @@ Rejected? _checkLines(
 
 /// A stored line. It is Reviewed when a person set everything
 /// [reviewNeed] asks for (ticket 09, ADR 0003).
-Map<String, Object?> _lineJson(LineInput line, Actor actor) {
+///
+/// An edit of an existing [prior] line keeps its Reviewed value unless the
+/// person changed its Category, business status or recipient. Values an
+/// import or an app filled in aren't the person's choice just because they
+/// saved the transaction around them.
+Map<String, Object?> _lineJson(
+  LineInput line,
+  Actor actor, {
+  TransactionLine? prior,
+}) {
   final business = switch (line.business) {
     Business(:final tag) => Business(tag.trim()),
     final other => other,
   };
-  final recipient = line.recipient?.trim();
+  final recipient = switch (line.recipient?.trim()) {
+    '' => null,
+    final recipient => recipient,
+  };
+  final chosen =
+      prior == null ||
+      line.category != prior.category ||
+      business != prior.business ||
+      recipient != prior.recipient;
   return {
     'lineId': line.id ?? newId(),
     'amountCents': line.amount.cents,
     'category': line.category,
     ...?business?.toJson(),
     'memo': line.memo.trim(),
-    if (recipient != null && recipient.isNotEmpty) 'recipient': recipient,
+    'recipient': ?recipient,
     'reviewed':
         actor.isPerson &&
-        reviewNeed(
-              category: line.category,
-              business: business,
-              recipient: recipient,
-            ) ==
-            null,
+        (chosen
+            ? reviewNeed(
+                    category: line.category,
+                    business: business,
+                    recipient: recipient,
+                  ) ==
+                  null
+            : prior.reviewed),
   };
 }
 
@@ -779,6 +798,7 @@ CommandResult _editTransaction(
     final amount = command.amount ?? transaction.amount;
     final lines = command.lines ?? transaction.lines.map(_asInput).toList();
     final kept = {for (final line in transaction.lines) line.category};
+    final prior = {for (final line in transaction.lines) line.id: line};
     if (_checkLines(state, amount, lines, kept: kept) case final rejected?) {
       return rejected;
     }
@@ -797,7 +817,7 @@ CommandResult _editTransaction(
                 stamp.actor,
                 id: line.id,
               )
-            : _lineJson(line, stamp.actor),
+            : _lineJson(line, stamp.actor, prior: prior[line.id]),
     ];
     if (amount != transaction.amount ||
         jsonEncode(stored) !=

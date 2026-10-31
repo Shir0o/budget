@@ -431,6 +431,122 @@ void main() {
     });
   });
 
+  group('the Reviewed rule on edit (ADR 0003)', () {
+    /// An outflow an app entered and filled in completely, so it waits in
+    /// Review with values the person never chose.
+    String suggested(_Budget budget) {
+      final id = budget.spend(3000, actor: Actor.automation);
+      budget.run(
+        SuggestReview(
+          transactionId: id,
+          lineId: budget.line(id).id,
+          category: budget.groceries,
+          business: const Personal(),
+        ),
+        Actor.automation,
+      );
+      expect(budget.line(id).reviewed, isFalse);
+      return id;
+    }
+
+    LineInput resubmit(TransactionLine line, {Money? amount}) => LineInput(
+      id: line.id,
+      amount: amount ?? line.amount,
+      category: line.category,
+      business: line.business,
+      memo: line.memo,
+      recipient: line.recipient,
+    );
+
+    test('a split that keeps the suggested values stays Unreviewed', () {
+      final budget = _Budget();
+      final id = suggested(budget);
+      final line = budget.line(id);
+
+      budget.run(
+        EditTransaction(
+          transactionId: id,
+          amount: const Money(-3000),
+          lines: [
+            resubmit(line, amount: const Money(-2000)),
+            const LineInput(amount: Money(-1000)),
+          ],
+        ),
+      );
+
+      final lines = budget.state.transaction(id)!.lines;
+      expect(lines.first.category, budget.groceries);
+      expect(lines.first.reviewed, isFalse);
+      expect(budget.state.reviewQueue, hasLength(2));
+    });
+
+    test('a line whose values the person changes becomes Reviewed', () {
+      final budget = _Budget();
+      final id = suggested(budget);
+      final line = budget.line(id);
+
+      budget.run(
+        EditTransaction(
+          transactionId: id,
+          lines: [
+            LineInput(
+              id: line.id,
+              amount: line.amount,
+              category: budget.diningOut,
+              business: const Personal(),
+            ),
+          ],
+        ),
+      );
+
+      expect(budget.line(id).reviewed, isTrue);
+    });
+
+    test('a new complete line the person adds is Reviewed', () {
+      final budget = _Budget();
+      final id = suggested(budget);
+      final line = budget.line(id);
+
+      budget.run(
+        EditTransaction(
+          transactionId: id,
+          lines: [
+            resubmit(line, amount: const Money(-2000)),
+            LineInput(
+              amount: const Money(-1000),
+              category: budget.diningOut,
+              business: const Personal(),
+            ),
+          ],
+        ),
+      );
+
+      final lines = budget.state.transaction(id)!.lines;
+      expect(lines.first.reviewed, isFalse);
+      expect(lines.last.reviewed, isTrue);
+    });
+
+    test('a Reviewed line stays Reviewed through an edit', () {
+      final budget = _Budget();
+      final id = budget.spend(
+        3000,
+        category: budget.groceries,
+        business: const Personal(),
+      );
+      expect(budget.line(id).reviewed, isTrue);
+
+      budget.run(
+        EditTransaction(
+          transactionId: id,
+          amount: const Money(-3500),
+          lines: [resubmit(budget.line(id), amount: const Money(-3500))],
+        ),
+      );
+
+      expect(budget.line(id).reviewed, isTrue);
+    });
+  });
+
   group('reviewQueue', () {
     test('lists Unreviewed lines newest first, split lines in order', () {
       final budget = _Budget();

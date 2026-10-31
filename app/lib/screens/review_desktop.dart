@@ -200,7 +200,12 @@ class _DesktopReviewScreenState extends State<DesktopReviewScreen> {
     final state = _state;
     final rows = _rows(state);
     final selected = _selected(rows);
-    if (selected != null) _load(selected);
+    if (selected != null) {
+      // Pin the shown line, so a fetch that adds a newer line above it
+      // doesn't swap it out from under half-entered values.
+      _key = selected.key;
+      _load(selected);
+    }
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.enter, meta: true): () =>
@@ -216,7 +221,7 @@ class _DesktopReviewScreenState extends State<DesktopReviewScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _header(rows.length),
+                _header(_showAll ? rows.length : state.reviewQueue.length),
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
@@ -804,9 +809,20 @@ class _SplitSheetState extends State<_SplitSheet> {
   )!;
   late final bool _outflow = _saved.amount.isNegative;
   late final Money _magnitude = _outflow ? -_saved.amount : _saved.amount;
+
+  /// An Unreviewed line starts blank, like the detail panel, so the sheet
+  /// never shows values an import or an app filled in (ADR 0003).
   late final List<LineDraft> _lines = [
-    for (final line in _saved.lines) LineDraft.of(line, outflow: _outflow),
+    for (final line in _saved.lines)
+      line.reviewed
+          ? LineDraft.of(line, outflow: _outflow)
+          : LineDraft(
+              id: line.id,
+              amount: _outflow ? -line.amount : line.amount,
+              memo: line.memo,
+            ),
   ];
+  String? _error;
 
   Money get _left =>
       _lines.fold<Money>(_magnitude, (left, line) => left - line.amount);
@@ -843,14 +859,45 @@ class _SplitSheetState extends State<_SplitSheet> {
     if (edit?.line case final line?) setState(() => _lines.add(line));
   }
 
+  /// [draft] as saved. An Unreviewed line the person left blank keeps the
+  /// values it had, and the engine leaves it Unreviewed.
+  LineInput _input(LineDraft draft) {
+    final saved = _saved.lines.where((line) => line.id == draft.id).firstOrNull;
+    if (saved == null ||
+        saved.reviewed ||
+        draft.category != null ||
+        draft.business != null) {
+      return draft.toInput(outflow: _outflow);
+    }
+    return LineInput(
+      id: saved.id,
+      amount: _outflow ? -draft.amount : draft.amount,
+      category: saved.category,
+      business: saved.business,
+      memo: draft.memo,
+      recipient: saved.recipient,
+    );
+  }
+
   void _save() {
-    widget.engine.execute(
+    final result = widget.engine.execute(
       EditTransaction(
         transactionId: _saved.id,
         amount: _saved.amount,
-        lines: [for (final line in _lines) line.toInput(outflow: _outflow)],
+        lines: [for (final line in _lines) _input(line)],
       ),
     );
+    if (result case Rejected(:final reason) when reason != Rejection.noChange) {
+      setState(
+        () => _error = switch (reason) {
+          Rejection.reconciledNeedsConfirmation =>
+            'This transaction is reconciled with your bank. Change it from '
+                'its account.',
+          _ => 'That split could not be saved.',
+        },
+      );
+      return;
+    }
     Navigator.of(context).pop();
   }
 
@@ -879,6 +926,12 @@ class _SplitSheetState extends State<_SplitSheet> {
             onEdit: _editLine,
             onAdd: _addLine,
           ),
+          if (_error case final error?)
+            Text(
+              error,
+              key: const ValueKey('split-error'),
+              style: const TextStyle(fontSize: 13, color: Palette.problemText),
+            ),
           Row(
             spacing: 8,
             children: [
