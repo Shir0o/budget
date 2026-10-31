@@ -1000,4 +1000,31 @@ void main() {
     expect(find.byTooltip('Close'), findsOneWidget);
     expect(find.byKey(const ValueKey('transaction-amount')), findsOneWidget);
   });
+
+  testWidgets(
+    'a phone tab, then a wider window, is the window on that '
+    'section',
+    (tester) async {
+      await _pumpAt(tester, const Size(390, 844), _home());
+      await tester.tap(
+        find.descendant(
+          of: find.byType(MainNav),
+          matching: find.text('Review'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ReviewScreen), findsOneWidget);
+
+      tester.view.physicalSize = const Size(1280, 820);
+      await tester.pumpAndSettle();
+
+      expect(_sidebar, findsOneWidget);
+      expect(find.byType(ReviewScreen), findsOneWidget);
+      expect(_highlighted(tester, Section.review), isTrue);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.android,
+      TargetPlatform.macOS,
+    }),
+  );
 }

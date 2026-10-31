@@ -148,6 +148,25 @@ enum Section {
   };
 }
 
+/// Lets the phone's bottom navigation switch the section the app window shows
+/// in place, rather than replacing the window's route, so the window is still
+/// there when it widens past the desktop breakpoint.
+class PhoneSectionScope extends InheritedWidget {
+  const PhoneSectionScope({
+    super.key,
+    required this.onSection,
+    required super.child,
+  });
+
+  final ValueChanged<Section> onSection;
+
+  static PhoneSectionScope? maybeOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<PhoneSectionScope>();
+
+  @override
+  bool updateShouldNotify(PhoneSectionScope old) => onSection != old.onSection;
+}
+
 /// The bottom navigation. Review shows a badge with the Unreviewed count.
 class MainNav extends StatelessWidget {
   const MainNav({super.key, required this.engine, required this.current});
@@ -163,6 +182,11 @@ class MainNav extends StatelessWidget {
 
   void _go(BuildContext context, Section section) {
     if (section == current) return;
+    // In the app window, the window switches the section itself.
+    if (PhoneSectionScope.maybeOf(context) case final scope?) {
+      scope.onSection(section);
+      return;
+    }
     final services = AppServicesScope.of(context);
     Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
