@@ -6,8 +6,8 @@ import '../widgets.dart';
 import 'schedules_screen.dart';
 import 'transaction_parts.dart';
 
-/// How far ahead the desktop Forecast looks (ticket 67). Scheduled
-/// Transactions are counted by month, so a range is the months it covers.
+/// How far ahead the desktop Forecast looks (ticket 67): [days] real days
+/// from today. [months] only feeds the "cannot cover" warning.
 enum ForecastRange {
   month('30 days', 1, 30),
   quarter('90 days', 3, 90),
@@ -17,7 +17,7 @@ enum ForecastRange {
 
   final String label;
 
-  /// The months [Forecast.of] is asked for.
+  /// The months [Forecast.of] is asked for, for the warning.
   final int months;
 
   /// How many days of due dates Coming up lists.
@@ -63,22 +63,13 @@ class _DesktopForecastScreenState extends State<DesktopForecastScreen> {
       start: thisMonth(),
       months: _range.months,
     );
-    // The balance today, then each month's end, is the line the chart draws.
-    final balances = [
-      forecast.startingBalance,
-      for (final month in forecast.months) month.balance,
-    ];
-    var lowest = 0;
-    for (final (i, balance) in balances.indexed) {
-      if (balance.cents < balances[lowest].cents) lowest = i;
-    }
-    final lowestDate = lowest == 0
+    final projection = _project(state, _range, forecast.startingBalance);
+    final balances = [for (final point in projection.points) point.balance];
+    final lowest = projection.lowest;
+    final lowestDate = projection.points[lowest].day == 0
         ? 'Today'
-        : formatDay(_endOf(forecast.months[lowest - 1].month));
-    final expenses = forecast.months.fold<Money>(
-      Money.zero,
-      (total, month) => total + month.outflow,
-    );
+        : formatDay(today().addDays(projection.points[lowest].day));
+    final expenses = projection.expenses;
     final short = forecast.underfunded;
 
     return Scaffold(
@@ -178,20 +169,22 @@ class _DesktopForecastScreenState extends State<DesktopForecastScreen> {
                 builder: (context, constraints) {
                   final chart = _ChartCard(
                     balances: balances,
+                    days: [for (final point in projection.points) point.day],
+                    span: projection.span,
                     lowest: lowest,
                     lowestDate: lowestDate,
                     expenses: expenses,
-                    end: formatMonth(forecast.months.last.month),
+                    end: formatDay(projection.last),
                   );
                   final coming = _ComingUp(
                     key: const ValueKey('forecast-coming'),
                     state: state,
-                    range: _range,
+                    dues: projection.dues,
                   );
                   final scrollingComing = _ComingUp(
                     key: const ValueKey('forecast-coming'),
                     state: state,
-                    range: _range,
+                    dues: projection.dues,
                     scrollable: true,
                   );
                   if (constraints.maxWidth < _besideWidth) {
@@ -225,30 +218,33 @@ class _DesktopForecastScreenState extends State<DesktopForecastScreen> {
   }
 }
 
-/// The last day of [month].
-CivilDate _endOf(CalendarMonth month) =>
-    CivilDate(month.year, month.month, 1).addMonths(1).addDays(-1);
-
 /// Today's balance, the low point and what the schedules spend, above the
 /// chart that draws them.
 class _ChartCard extends StatelessWidget {
   const _ChartCard({
     required this.balances,
+    required this.days,
+    required this.span,
     required this.lowest,
     required this.lowestDate,
     required this.expenses,
     required this.end,
   });
 
-  /// Today's balance, then the predicted balance at each month's end.
+  /// Today's balance, then the predicted balance after each due date.
   final List<Money> balances;
+
+  /// The day of each balance, counted from today, and how many days the line
+  /// spans.
+  final List<int> days;
+  final int span;
   final int lowest;
   final String lowestDate;
 
   /// What the Scheduled Transactions spend over the range.
   final Money expenses;
 
-  /// The last month the line reaches.
+  /// The last day the line reaches.
   final String end;
 
   @override
@@ -293,7 +289,12 @@ class _ChartCard extends StatelessWidget {
             height: 200,
             child: CustomPaint(
               key: const ValueKey('forecast-chart'),
-              painter: _BalanceChart(balances: balances, lowest: lowest),
+              painter: _BalanceChart(
+                balances: balances,
+                days: days,
+                span: span,
+                lowest: lowest,
+              ),
               child: const SizedBox.expand(),
             ),
           ),
@@ -358,9 +359,16 @@ class _Stat extends StatelessWidget {
 /// The predicted balance as one line, from today to the end of the range,
 /// with a dot on the low point.
 class _BalanceChart extends CustomPainter {
-  _BalanceChart({required this.balances, required this.lowest});
+  _BalanceChart({
+    required this.balances,
+    required this.days,
+    required this.span,
+    required this.lowest,
+  });
 
   final List<Money> balances;
+  final List<int> days;
+  final int span;
   final int lowest;
 
   @override
@@ -375,7 +383,7 @@ class _BalanceChart extends CustomPainter {
     if (low > 0) low = 0;
     if (high == low) high = low + 100;
 
-    double x(int index) => size.width * index / (balances.length - 1);
+    double x(int index) => size.width * days[index] / span;
     double y(int cents) => size.height * (high - cents) / (high - low);
 
     final line = Path()..moveTo(x(0), y(balances.first.cents));
@@ -425,10 +433,11 @@ class _BalanceChart extends CustomPainter {
 
   @override
   bool shouldRepaint(_BalanceChart old) {
-    if (old.lowest != lowest) return true;
+    if (old.lowest != lowest || old.span != span) return true;
     if (old.balances.length != balances.length) return true;
     for (var i = 0; i < balances.length; i++) {
       if (old.balances[i].cents != balances[i].cents) return true;
+      if (old.days[i] != days[i]) return true;
     }
     return false;
   }
@@ -439,12 +448,12 @@ class _ComingUp extends StatelessWidget {
   const _ComingUp({
     super.key,
     required this.state,
-    required this.range,
+    required this.dues,
     this.scrollable = false,
   });
 
   final BudgetState state;
-  final ForecastRange range;
+  final List<_Due> dues;
 
   /// Whether it has a height of its own to scroll in, as it does beside the
   /// chart. Under the chart the page scrolls instead.
@@ -452,7 +461,6 @@ class _ComingUp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dues = _dueDates(state, range);
     return CardBox(
       padding: EdgeInsets.zero,
       child: Column(
@@ -490,38 +498,89 @@ class _ComingUp extends StatelessWidget {
   }
 }
 
-/// A Scheduled Transaction and one of its due dates in the range.
-typedef _Due = ({CivilDate date, Schedule schedule});
+/// A Scheduled Transaction and one of its due dates in the range. An
+/// [overdue] one was due before today and has not been entered yet.
+typedef _Due = ({CivilDate date, Schedule schedule, bool overdue});
 
-List<_Due> _dueDates(BudgetState state, ForecastRange range) {
+/// The range's real days of due dates, the balance after each and what the
+/// schedules spend.
+typedef _Projection = ({
+  List<_Due> dues,
+  List<({int day, Money balance})> points,
+  int lowest,
+  Money expenses,
+  int span,
+  CivilDate last,
+});
+
+/// Every due date in the range's days from today, so a weekly schedule comes
+/// up each week. A due date already gone by and not yet entered is listed as
+/// overdue and counted today, as the phone's Forecast counts it in this
+/// month, rather than moved forward.
+_Projection _project(BudgetState state, ForecastRange range, Money start) {
   final from = today();
-  final until = from.addDays(range.days);
+  final end = from.addDays(range.days);
   final dues = <_Due>[];
   for (final schedule in state.schedules) {
-    var date = schedule.nextDue;
-    // A due date already gone by is not coming up.
-    for (var i = 0; i < 400 && date.compareTo(from) < 0; i++) {
-      date = _following(date, schedule);
-    }
-    if (date.compareTo(until) <= 0) {
-      dues.add((date: date, schedule: schedule));
+    for (var k = 0; k < 1000; k++) {
+      final date = _nth(schedule, k);
+      if (date.compareTo(end) >= 0) break;
+      dues.add((
+        date: date,
+        schedule: schedule,
+        overdue: date.compareTo(from) < 0,
+      ));
     }
   }
+  CivilDate when(_Due due) => due.overdue ? from : due.date;
   dues.sort((a, b) {
+    final byDay = when(a).compareTo(when(b));
+    if (byDay != 0) return byDay;
     final byDate = a.date.compareTo(b.date);
     return byDate != 0 ? byDate : a.schedule.payee.compareTo(b.schedule.payee);
   });
-  return dues;
+
+  // The balance after each day something falls due.
+  final points = [(day: 0, balance: start)];
+  var balance = start;
+  var expenses = Money.zero;
+  for (final due in dues) {
+    final day = _daysBetween(from, when(due));
+    balance += due.schedule.amount;
+    if (due.schedule.amount.isNegative) {
+      expenses += Money(-due.schedule.amount.cents);
+    }
+    if (points.last.day == day && points.length > 1) points.removeLast();
+    points.add((day: day, balance: balance));
+  }
+  var lowest = 0;
+  for (final (i, point) in points.indexed) {
+    if (point.balance.cents < points[lowest].balance.cents) lowest = i;
+  }
+  return (
+    dues: dues,
+    points: points,
+    lowest: lowest,
+    expenses: expenses,
+    span: range.days - 1,
+    last: end.addDays(-1),
+  );
 }
 
-/// [schedule]'s due date after [date], advanced one interval at a time.
-CivilDate _following(CivilDate date, Schedule schedule) =>
-    switch (schedule.interval) {
-      TargetInterval.days => date.addDays(schedule.every),
-      TargetInterval.weeks => date.addDays(schedule.every * 7),
-      TargetInterval.months => date.addMonths(schedule.every),
-      TargetInterval.years => date.addMonths(schedule.every * 12),
-    };
+/// The [k]th due date of [schedule], counted from its next one. Each is
+/// worked out from the first so a month-end date does not drift.
+CivilDate _nth(Schedule schedule, int k) => switch (schedule.interval) {
+  TargetInterval.days => schedule.nextDue.addDays(k * schedule.every),
+  TargetInterval.weeks => schedule.nextDue.addDays(k * schedule.every * 7),
+  TargetInterval.months => schedule.nextDue.addMonths(k * schedule.every),
+  TargetInterval.years => schedule.nextDue.addMonths(k * schedule.every * 12),
+};
+
+int _daysBetween(CivilDate a, CivilDate b) => DateTime.utc(
+  b.year,
+  b.month,
+  b.day,
+).difference(DateTime.utc(a.year, a.month, a.day)).inDays;
 
 class _DueRow extends StatelessWidget {
   const _DueRow({required this.state, required this.due});
@@ -558,6 +617,7 @@ class _DueRow extends StatelessWidget {
               ),
               Text(
                 [
+                  if (due.overdue) 'Overdue',
                   state.account(due.schedule.accountId)?.name ?? '',
                   categoryName(state, due.schedule.category),
                 ].join(' · '),
