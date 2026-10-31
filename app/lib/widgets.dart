@@ -78,26 +78,35 @@ class AvailablePill extends StatelessWidget {
 }
 
 /// What the desktop window's toolbar shows and changes, for the screens in its
-/// content area: the month. Its presence also says the window itself carries
-/// the budget name, the month switcher and Settings, so a screen doesn't
-/// repeat them. Absent on a phone, where each screen keeps its own month.
+/// content area: the month, and the budget state the window last saw. Its
+/// presence also says the window itself carries the budget name, the month
+/// switcher and Settings, so a screen doesn't repeat them. Absent on a phone,
+/// where each screen keeps its own month.
 class DesktopWindowScope extends InheritedWidget {
   const DesktopWindowScope({
     super.key,
     required this.month,
     required this.onMonthChanged,
+    required this.state,
     required super.child,
   });
 
   final CalendarMonth month;
   final ValueChanged<CalendarMonth> onMonthChanged;
 
+  /// The state the window last replayed. A new one means an Event changed the
+  /// budget, so a section opened by the window (the Budget month after a
+  /// sheet saved, say) rebuilds with the new numbers.
+  final BudgetState state;
+
   static DesktopWindowScope? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<DesktopWindowScope>();
 
   @override
   bool updateShouldNotify(DesktopWindowScope old) =>
-      month != old.month || onMonthChanged != old.onMonthChanged;
+      month != old.month ||
+      !identical(state, old.state) ||
+      onMonthChanged != old.onMonthChanged;
 }
 
 /// One section of the app. The phone's bottom navigation shows the four with

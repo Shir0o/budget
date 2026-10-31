@@ -84,6 +84,7 @@ class _CategoryPickerState extends State<_CategoryPicker> {
       Money amount, {
       bool primary = false,
     }) => InkWell(
+      key: ValueKey('pick-$id'),
       onTap: () => Navigator.of(context).pop(id),
       child: Container(
         constraints: const BoxConstraints(minHeight: 46),

@@ -180,6 +180,7 @@ class _AssignScreenState extends State<AssignScreen> {
                         ),
                         for (final line in batch)
                           _LineRow(
+                            key: ValueKey('assign-${line.categoryId}'),
                             name: state.category(line.categoryId)!.name,
                             detail: _detail(state, line, month),
                             partial: _isPartial(state, line, month),
@@ -389,6 +390,7 @@ class _Hero extends StatelessWidget {
             ),
             Text(
               readyToAssign.formatDollars(),
+              key: const ValueKey('assign-before'),
               style: amountStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.w600,
@@ -409,6 +411,7 @@ class _Hero extends StatelessWidget {
             ),
             Text(
               after.formatDollars(),
+              key: const ValueKey('assign-after'),
               style: amountStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w500,
@@ -426,6 +429,7 @@ class _Hero extends StatelessWidget {
 
 class _LineRow extends StatelessWidget {
   const _LineRow({
+    super.key,
     required this.name,
     required this.detail,
     required this.partial,
