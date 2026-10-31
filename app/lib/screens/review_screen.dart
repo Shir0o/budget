@@ -6,6 +6,7 @@ import '../flows.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'possible_match_screen.dart';
+import 'review_desktop.dart';
 import 'transaction_parts.dart';
 
 /// The Business Tags shown before "All tags" (canvas: Review).
@@ -86,6 +87,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // In the desktop window Review is a list with a detail panel beside it
+    // (ticket 64). The phone keeps one line at a time.
+    if (DesktopWindowScope.maybeOf(context) != null) {
+      return DesktopReviewScreen(engine: widget.engine);
+    }
     final state = widget.engine.state;
     final queue = state.reviewQueue;
     final attention = needsAttention(state);

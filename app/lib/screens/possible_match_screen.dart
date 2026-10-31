@@ -186,7 +186,7 @@ class _MatchCard extends StatelessWidget {
               FilledButton(
                 key: const ValueKey('confirm-match'),
                 onPressed: onConfirm,
-                child: const Text('Same transaction'),
+                child: const Text('Merge into one'),
               ),
               OutlinedButton(
                 key: const ValueKey('reject-match'),
@@ -194,7 +194,7 @@ class _MatchCard extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                 ),
-                child: const Text('Not the same'),
+                child: const Text('Keep both'),
               ),
             ],
           ),
