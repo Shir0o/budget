@@ -53,22 +53,22 @@ enum DesktopAction {
     section: Section.review,
     shortcut: SingleActivator(LogicalKeyboardKey.digit2, meta: true),
   ),
-  sectionAccounts(
-    DesktopMenu.view,
-    section: Section.accounts,
-    shortcut: SingleActivator(LogicalKeyboardKey.digit3, meta: true),
-  ),
+  sectionAccounts(DesktopMenu.view, section: Section.accounts),
   sectionHistory(
     DesktopMenu.view,
     section: Section.history,
-    shortcut: SingleActivator(LogicalKeyboardKey.digit4, meta: true),
+    shortcut: SingleActivator(LogicalKeyboardKey.digit5, meta: true),
   ),
   sectionForecast(
     DesktopMenu.view,
     section: Section.forecast,
-    shortcut: SingleActivator(LogicalKeyboardKey.digit5, meta: true),
+    shortcut: SingleActivator(LogicalKeyboardKey.digit3, meta: true),
   ),
-  sectionBusinessReport(DesktopMenu.view, section: Section.businessReport),
+  sectionBusinessReport(
+    DesktopMenu.view,
+    section: Section.businessReport,
+    shortcut: SingleActivator(LogicalKeyboardKey.digit4, meta: true),
+  ),
   previousMonth(
     DesktopMenu.view,
     title: 'Previous month',

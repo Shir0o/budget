@@ -1,10 +1,12 @@
 import 'package:budget/app.dart';
-import 'package:budget/screens/accounts_screen.dart';
+import 'package:budget/screens/account_register_screen.dart';
 import 'package:budget/screens/budget_screen.dart';
+import 'package:budget/screens/business_report_screen.dart';
 import 'package:budget/screens/forecast_screen.dart';
 import 'package:budget/screens/history_screen.dart';
 import 'package:budget/screens/review_screen.dart';
 import 'package:budget/screens/settings_screen.dart';
+import 'package:budget/screens/welcome_screen.dart';
 import 'package:budget/widgets.dart';
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
@@ -147,9 +149,9 @@ void main() {
       'View': {
         'Budget': LogicalKeyboardKey.digit1,
         'Review': LogicalKeyboardKey.digit2,
-        'Accounts': LogicalKeyboardKey.digit3,
-        'History': LogicalKeyboardKey.digit4,
-        'Forecast': LogicalKeyboardKey.digit5,
+        'Forecast': LogicalKeyboardKey.digit3,
+        'Business report': LogicalKeyboardKey.digit4,
+        'History': LogicalKeyboardKey.digit5,
         'Previous month': LogicalKeyboardKey.bracketLeft,
         'Next month': LogicalKeyboardKey.bracketRight,
       },
@@ -165,8 +167,9 @@ void main() {
       }
     }
 
-    // Go to Review and Business report are in View, the one without a digit.
-    expect(_labels(_menu(tester, 'View')), contains('Business report'));
+    // Accounts is in View, the one section without a digit, and Go to Review
+    // is in Transaction.
+    expect(_shortcut(_item(_menu(tester, 'View'), 'Accounts')), isNull);
     expect(_labels(_menu(tester, 'Transaction')), contains('Go to Review'));
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
@@ -202,6 +205,9 @@ void main() {
           .hasFocus,
       isTrue,
     );
+    // The field keeps the menu's keys while it has the cursor.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
 
     // View → a section is the sidebar; View → Next month is the switcher.
     await choose('View', 'History');
@@ -232,9 +238,9 @@ void main() {
     final screens = [
       BudgetScreen,
       ReviewScreen,
-      AccountsScreen,
-      HistoryScreen,
       ForecastScreen,
+      BusinessReportScreen,
+      HistoryScreen,
     ];
     // Every section, and back to Budget, exactly as the sidebar does.
     for (final (digit, screen) in [
@@ -352,7 +358,7 @@ void main() {
     );
 
     // Change History lists it, and the change it undid is marked Reverted.
-    await _cmd(tester, LogicalKeyboardKey.digit4);
+    await _cmd(tester, LogicalKeyboardKey.digit5);
     expect(find.textContaining('Undid'), findsOneWidget);
     expect(find.text('Reverted'), findsOneWidget);
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
@@ -389,4 +395,159 @@ void main() {
       isEmpty,
     );
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('a section replaces a register or Settings open over it', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    await _pumpAt(tester, const Size(1280, 820), seed.app());
+    final checking = seed.state.accounts.single;
+
+    // Budget, clicked over its own open register, goes back to the month.
+    await tester.tap(find.byKey(ValueKey('account-${checking.id}')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AccountRegisterScreen), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('section-budget')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AccountRegisterScreen), findsNothing);
+    expect(find.byType(BudgetScreen), findsOneWidget);
+    expect(find.byTooltip('Back'), findsNothing);
+
+    // Nothing is left under the section, so the keys still work.
+    await _cmd(tester, LogicalKeyboardKey.digit2);
+    expect(find.byType(ReviewScreen), findsOneWidget);
+
+    // Another section over Settings replaces both.
+    await _cmd(tester, LogicalKeyboardKey.comma);
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('section-history')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsScreen), findsNothing);
+    expect(find.byType(HistoryScreen), findsOneWidget);
+    await _cmd(tester, LogicalKeyboardKey.digit1);
+    expect(find.byType(BudgetScreen), findsOneWidget);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('a click on the sidebar or toolbar closes an open sheet first', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    await _pumpAt(tester, const Size(1280, 820), seed.app());
+    final transactions = seed.state.transactions.length;
+    final sheet = find.byKey(const ValueKey('flow-sheet'), skipOffstage: false);
+
+    // A section: the sheet closes without saving, and the section opens.
+    await _cmd(tester, LogicalKeyboardKey.keyN);
+    expect(sheet, findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('section-review')));
+    await tester.pumpAndSettle();
+    expect(sheet, findsNothing);
+    expect(find.byType(ReviewScreen), findsOneWidget);
+    expect(seed.state.transactions, hasLength(transactions));
+    await _cmd(tester, LogicalKeyboardKey.digit1);
+    expect(find.byType(BudgetScreen), findsOneWidget);
+
+    // The toolbar's Settings: Settings opens with no sheet left under it.
+    await _cmd(tester, LogicalKeyboardKey.keyN);
+    expect(sheet, findsOneWidget);
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(sheet, findsNothing);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('a menu item does nothing under another route or while typing', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    await _pumpAt(tester, const Size(1280, 820), seed.app());
+    // A change of the person's on this device, which Undo would revert.
+    seed.assign(seed.groceries, 7000);
+    bool reverted() =>
+        seed.engine.history.entries().any((entry) => entry.isRevert);
+
+    Future<void> choose(String menu, String item) async {
+      _item(_menu(tester, menu), item).onSelected!();
+      await tester.pumpAndSettle();
+    }
+
+    // The search field has the cursor: Undo and New transaction are its own.
+    await _cmd(tester, LogicalKeyboardKey.keyF);
+    await choose('Edit', 'Undo');
+    await choose('Transaction', 'New transaction…');
+    expect(reverted(), isFalse);
+    expect(find.byKey(const ValueKey('flow-sheet')), findsNothing);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+
+    // New budget… covers the window with Welcome: the menu leaves the budget
+    // under it alone.
+    await choose('File', 'New budget…');
+    expect(find.byType(WelcomeScreen), findsOneWidget);
+    await choose('Edit', 'Undo');
+    await choose('Transaction', 'New transaction…');
+    expect(reverted(), isFalse);
+    expect(
+      find.byKey(const ValueKey('flow-sheet'), skipOffstage: false),
+      findsNothing,
+    );
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets(
+    'Cmd+Z skips a change synced in from another device or the bank',
+    (tester) async {
+      final seed = _MonthSeed();
+      // The person's own latest change on this device.
+      seed.assign(seed.groceries, 7000);
+      // A newer change by the same person on another device, synced in.
+      final other = BudgetEngine(
+        log: InMemoryEventLog(),
+        deviceId: 'other-device',
+        actor: Actor.userMac,
+      )..merge(seed.engine.events);
+      other.execute(
+        SetAssignment(
+          categoryId: seed.dining,
+          month: seed.month,
+          amount: const Money(9000),
+        ),
+      );
+      seed.engine.merge(other.events);
+      // A newer bank fetch on this device.
+      final checking = seed.state.accounts.single.id;
+      seed.engine.execute(
+        ImportBankTransactions(
+          entries: [
+            BankEntry(
+              accountId: checking,
+              bankId: 'tx-1',
+              date: today(),
+              amount: const Money(-1500),
+              description: 'Corner Shop',
+            ),
+          ],
+        ),
+      );
+      await _pumpAt(tester, const Size(1280, 820), seed.app());
+
+      await _cmd(tester, LogicalKeyboardKey.keyZ);
+
+      // Only this device's change is undone.
+      expect(
+        seed.state.available(seed.groceries, seed.month),
+        const Money(6000),
+      );
+      expect(seed.state.available(seed.dining, seed.month), const Money(4000));
+      expect(seed.state.bankTransaction(checking, 'tx-1'), isNotNull);
+      final undo = seed.engine.history.entries().firstWhere(
+        (entry) => entry.isRevert,
+      );
+      final undone = seed.engine.history.entries().firstWhere(
+        (entry) => entry.groupId == undo.reverts.first,
+      );
+      expect(undone.deviceId, 'test-device');
+      expect(undone.actor.kind, ActorKind.person);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
 }

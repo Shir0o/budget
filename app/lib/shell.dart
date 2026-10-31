@@ -137,13 +137,22 @@ class _DesktopShellState extends State<DesktopShell> {
   );
 
   /// Swaps the content area for [section]'s screen, with no route animation.
+  /// Whatever was open over the old section (a register, Settings, a sheet)
+  /// goes with it, so the section is the only route left in the area.
   void _go(Section section) {
-    if (section == _section) return;
-    _contentKey.currentState!.pushReplacement(
+    final content = _contentKey.currentState!;
+    if (section == _section && !content.canPop()) return;
+    content.pushAndRemoveUntil(
       _sectionRoute(_library!.current, AppServicesScope.of(context), section),
+      (_) => false,
     );
     setState(() => _section = section);
   }
+
+  /// A click on the toolbar or sidebar is a click outside an open sheet: it
+  /// closes the sheet without saving, as Esc does, before the click acts.
+  void _closeSheet() =>
+      _contentKey.currentState?.popUntil((route) => route is! PopupRoute);
 
   Future<void> _openAccount(Account account) async {
     await _contentKey.currentState!.push(
@@ -244,8 +253,7 @@ class _DesktopShellState extends State<DesktopShell> {
   /// Does what a menu item or its key does: the same action as the toolbar or
   /// sidebar button of that name (ticket 69).
   void _run(DesktopAction action) {
-    // The phone layout has none of the window's parts to act on.
-    if (!_windowed) return;
+    if (!_answers(action)) return;
     // A sheet or a screen over the section keeps the window's keys to itself.
     if (action != DesktopAction.search &&
         (_contentKey.currentState?.canPop() ?? false)) {
@@ -295,6 +303,9 @@ class _DesktopShellState extends State<DesktopShell> {
     final engine = _library!.current;
     final entry = engine.history
         .entries(filter: const HistoryFilter(actors: {ActorKind.person}))
+        // Only this device's own changes: one synced in from another device
+        // is not this person's last action here.
+        .where((entry) => entry.deviceId == engine.deviceId)
         .where((entry) => !entry.isRevert && entry.canRevert)
         .where((entry) => entry.revertedBy == null)
         .firstOrNull;
@@ -309,17 +320,22 @@ class _DesktopShellState extends State<DesktopShell> {
   /// The window's keys (ticket 69): each runs the action its menu item does.
   /// A window at phone width, or one a route covers, answers none of them.
   bool _onKey(KeyEvent event) {
-    if (event is! KeyDownEvent || !_windowed || !_current) return false;
+    if (event is! KeyDownEvent) return false;
     final keyboard = HardwareKeyboard.instance;
     final action = DesktopAction.values
         .where((action) => action.shortcut?.accepts(event, keyboard) ?? false)
         .firstOrNull;
-    if (action == null) return false;
-    // A field being typed in keeps its own keys, Cmd+Z included.
-    if (action != DesktopAction.search && _typing) return false;
+    if (action == null || !_answers(action)) return false;
     _run(action);
     return true;
   }
+
+  /// Whether the window acts on [action], from its key or its menu item. The
+  /// phone layout has none of the window's parts to act on, a window another
+  /// route covers is not the one on screen, and a field being typed in keeps
+  /// its own keys, Cmd+Z included.
+  bool _answers(DesktopAction action) =>
+      _windowed && _current && (action == DesktopAction.search || !_typing);
 
   /// Whether the person is typing in a text field.
   bool get _typing {
@@ -343,9 +359,17 @@ class _DesktopShellState extends State<DesktopShell> {
     return LayoutBuilder(
       builder: (context, constraints) {
         _windowed = constraints.maxWidth >= desktopBreakpoint;
-        return _windowed
-            ? _window(engine, services, library)
-            : Section.budget.screen(engine, services);
+        if (_windowed) return _window(engine, services, library);
+        // The phone's bottom navigation switches the section here, so this
+        // window is still the route when it widens again. A section the
+        // phone has no tab for shows the Budget month.
+        return PhoneSectionScope(
+          onSection: (section) => setState(() => _section = section),
+          child: (_section.inBottomNav ? _section : Section.budget).screen(
+            engine,
+            services,
+          ),
+        );
       },
     );
   }
@@ -368,31 +392,37 @@ class _DesktopShellState extends State<DesktopShell> {
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _Toolbar(
-              name: engine.state.budget!.name,
-              budgets: library.entries,
-              state: engine.state,
-              month: _month,
-              onMonthChanged: (month) => setState(() => _month = month),
-              onOpenBudget: _openBudget,
-              onNewBudget: _newBudget,
-              onManageBudgets: _manageBudgets,
-              onOpenTransaction: _openTransaction,
-              onNewTransaction: _newTransaction,
-              onSettings: _openSettings,
-              searchFocus: _searchFocus,
+            Listener(
+              onPointerDown: (_) => _closeSheet(),
+              child: _Toolbar(
+                name: engine.state.budget!.name,
+                budgets: library.entries,
+                state: engine.state,
+                month: _month,
+                onMonthChanged: (month) => setState(() => _month = month),
+                onOpenBudget: _openBudget,
+                onNewBudget: _newBudget,
+                onManageBudgets: _manageBudgets,
+                onOpenTransaction: _openTransaction,
+                onNewTransaction: _newTransaction,
+                onSettings: _openSettings,
+                searchFocus: _searchFocus,
+              ),
             ),
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _Sidebar(
-                    state: engine.state,
-                    section: _section,
-                    onSection: _go,
-                    onAccount: _openAccount,
-                    onAddAccount: _addAccount,
-                    sync: _syncText,
+                  Listener(
+                    onPointerDown: (_) => _closeSheet(),
+                    child: _Sidebar(
+                      state: engine.state,
+                      section: _section,
+                      onSection: _go,
+                      onAccount: _openAccount,
+                      onAddAccount: _addAccount,
+                      sync: _syncText,
+                    ),
                   ),
                   Expanded(
                     child: Navigator(
