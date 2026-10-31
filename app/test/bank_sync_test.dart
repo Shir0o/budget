@@ -141,7 +141,16 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 
 Future<void> _openBankSync(WidgetTester tester) async {
   await _tap(tester, find.byTooltip('Settings'));
-  await _tap(tester, find.text('Bank sync'));
+  // A phone lists the row; the desktop window has panes (ticket 66).
+  if (find.byKey(const ValueKey('settings-panes')).evaluate().isNotEmpty) {
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('settings-pane-Bank connection')),
+    );
+    await _tap(tester, find.text('Connect bank'));
+  } else {
+    await _tap(tester, find.text('Bank sync'));
+  }
 }
 
 void main() {
@@ -313,16 +322,37 @@ void main() {
     );
     await _pump(tester, BudgetApp(engine: seed.engine, services: services));
     await _openBankSync(tester);
+    final sheet = find.byKey(const ValueKey('flow-sheet'));
 
     // The message and the pause are on screen, and nothing is arranged in
     // the background while the link is refused.
     expect(
-      find.text('SimpleFIN refused the access URL. Re-link your bank.'),
+      find.descendant(
+        of: sheet,
+        matching: find.text(
+          'SimpleFIN refused the access URL. Re-link your bank.',
+        ),
+      ),
       findsOneWidget,
     );
-    expect(find.byKey(const ValueKey('bank-sync-paused')), findsOneWidget);
-    expect(find.text('Paused until you re-link'), findsOneWidget);
-    expect(find.text('Re-link bank'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: sheet,
+        matching: find.byKey(const ValueKey('bank-sync-paused')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: sheet,
+        matching: find.text('Paused until you re-link'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text('Re-link bank')),
+      findsOneWidget,
+    );
     expect(scheduler.cancelled, 1);
 
     await tester.enterText(
@@ -333,10 +363,25 @@ void main() {
 
     // The re-link clears the pause and the message, fetches once and hands
     // the 6-hourly work back to the platform.
-    expect(find.text('Imported 1 new.'), findsOneWidget);
-    expect(find.text('19 of 20'), findsOneWidget);
-    expect(find.text('Every 6 hours, at most'), findsOneWidget);
-    expect(find.byKey(const ValueKey('bank-sync-paused')), findsNothing);
+    expect(
+      find.descendant(of: sheet, matching: find.text('Imported 1 new.')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text('19 of 20')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text('Every 6 hours, at most')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: sheet,
+        matching: find.byKey(const ValueKey('bank-sync-paused')),
+      ),
+      findsNothing,
+    );
     expect(scheduler.scheduled, 1);
     final book = await services.prefs.readSimpleFinBook();
     expect(book.auth, AuthState.linked);
@@ -358,11 +403,18 @@ void main() {
     await services.prefs.writeSimpleFinBook(_linkedBook(seed.checking));
     await _pump(tester, BudgetApp(engine: seed.engine, services: services));
     await _openBankSync(tester);
+    final sheet = find.byKey(const ValueKey('flow-sheet'));
 
     await _tap(tester, find.byKey(const ValueKey('fetch-now')));
-    expect(find.text('Re-authenticate with your bank.'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: sheet,
+        matching: find.text('Re-authenticate with your bank.'),
+      ),
+      findsOneWidget,
+    );
 
-    // Back to Settings and into Bank sync again: the message is kept, not
+    // Back to Settings and into Connect bank again: the message is kept, not
     // swallowed when the fetch screen closes. The sheet is over Settings,
     // which keeps its own Back button, so tap the sheet's.
     await _tap(
@@ -372,8 +424,14 @@ void main() {
         matching: find.byTooltip('Back'),
       ),
     );
-    await _tap(tester, find.text('Bank sync'));
-    expect(find.text('Re-authenticate with your bank.'), findsOneWidget);
+    await _tap(tester, find.text('Connect bank'));
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('flow-sheet')),
+        matching: find.text('Re-authenticate with your bank.'),
+      ),
+      findsOneWidget,
+    );
     final book = await services.prefs.readSimpleFinBook();
     expect(book.errors.single.message, 'Re-authenticate with your bank.');
   });

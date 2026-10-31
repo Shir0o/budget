@@ -196,6 +196,8 @@ class _DesktopShellState extends State<DesktopShell> {
         builder: (_) => SettingsScreen(
           engine: _library!.current,
           services: AppServicesScope.of(context),
+          onOpenBudget: _openBudget,
+          onNewBudget: _newBudget,
         ),
       ),
     );
