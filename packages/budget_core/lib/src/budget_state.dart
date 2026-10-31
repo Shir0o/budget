@@ -404,8 +404,9 @@ final class BudgetState {
         (asOf == null || t.date.compareTo(asOf) <= 0),
   );
 
-  /// [accountId]'s last reconcile: the date it was done and the bank balance
-  /// it matched. Null until the first one (ticket 09).
+  /// [accountId]'s last reconcile: the statement date the person entered and
+  /// the bank balance it matched. The latest statement date wins, whatever the
+  /// order devices reconciled in. Null until the first one (ticket 09).
   ({CivilDate date, Money bankBalance})? lastReconcile(String accountId) =>
       _reconciles[accountId];
 
@@ -654,10 +655,13 @@ final class BudgetState {
         // its date are locked. One a device clears after it stays cleared.
         final accountId = p['accountId'] as String;
         final date = CivilDate.parse(p['date'] as String);
-        _reconciles[accountId] = (
-          date: date,
-          bankBalance: Money(p['clearedBalanceCents'] as int),
-        );
+        final previous = _reconciles[accountId];
+        if (previous == null || date.compareTo(previous.date) >= 0) {
+          _reconciles[accountId] = (
+            date: date,
+            bankBalance: Money(p['clearedBalanceCents'] as int),
+          );
+        }
         for (final t in _transactions.values.toList()) {
           if (t.accountId == accountId &&
               t.cleared == ClearedStatus.cleared &&

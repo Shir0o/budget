@@ -128,6 +128,34 @@ void main() {
     expect(find.text('Home'), findsOneWidget); // the Budget screen
   });
 
+  testWidgets('the Import chip shows import entries only', (tester) async {
+    final seed = _Seed();
+    seed.engine.execute(
+      SetAssignment(
+        categoryId: seed.groceries,
+        month: thisMonth(),
+        amount: const Money(10000),
+      ),
+    );
+    BudgetEngine(
+      log: seed.log,
+      deviceId: 'importer',
+      actor: Actor.imported,
+    ).execute(
+      SetAssignment(
+        categoryId: seed.groceries,
+        month: thisMonth(),
+        amount: const Money(12000),
+      ),
+    );
+    await _pump(tester, seed.app());
+    await _tap(tester, find.text('History'));
+
+    await _tap(tester, find.widgetWithText(SelectChip, 'Import'));
+    expect(find.text('Assigned \$20.00 to Groceries'), findsOneWidget);
+    expect(find.text('Assigned \$100.00 to Groceries'), findsNothing);
+  });
+
   testWidgets('a field changed again later: Revert anyway or Skip', (
     tester,
   ) async {
