@@ -51,10 +51,22 @@ class _BudgetScreenState extends State<BudgetScreen> {
     }
   }
 
-  /// A run by hand, then this month's Suggestion Batch.
+  /// A run by hand, then the month's Suggestion Batch. On a phone the run
+  /// comes first. On desktop the sheet opens without writing anything, so Esc
+  /// changes nothing, and the run happens when the batch is accepted.
   Future<void> _assign() {
-    widget.engine.execute(RunAutomation(month: thisMonth()));
-    return _openFlow(AssignScreen(engine: widget.engine));
+    final window = DesktopWindowScope.maybeOf(context);
+    if (window == null) {
+      widget.engine.execute(RunAutomation(month: thisMonth()));
+      return _openFlow(AssignScreen(engine: widget.engine));
+    }
+    return _openFlow(
+      AssignScreen(
+        engine: widget.engine,
+        month: window.month,
+        runAutomationOnAccept: true,
+      ),
+    );
   }
 
   Future<void> _open(Widget screen) async {

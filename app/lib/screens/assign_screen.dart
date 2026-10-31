@@ -13,16 +13,28 @@ import 'target_parts.dart';
 /// line by line, and what it doesn't cover: overspent Categories and
 /// unfunded card debt.
 class AssignScreen extends StatefulWidget {
-  const AssignScreen({super.key, required this.engine});
+  const AssignScreen({
+    super.key,
+    required this.engine,
+    this.month,
+    this.runAutomationOnAccept = false,
+  });
 
   final BudgetEngine engine;
+
+  /// The month to assign; this month when null.
+  final CalendarMonth? month;
+
+  /// Whether accepting also runs automation for [month], instead of the
+  /// caller having run it before opening the sheet.
+  final bool runAutomationOnAccept;
 
   @override
   State<AssignScreen> createState() => _AssignScreenState();
 }
 
 class _AssignScreenState extends State<AssignScreen> {
-  final _month = thisMonth();
+  late final _month = widget.month ?? thisMonth();
 
   /// Lines the person unchecked.
   final _unchecked = <String>{};
@@ -30,6 +42,9 @@ class _AssignScreenState extends State<AssignScreen> {
   BudgetState get _state => widget.engine.state;
 
   void _accept(List<Suggestion> lines) {
+    if (widget.runAutomationOnAccept) {
+      widget.engine.execute(RunAutomation(month: _month));
+    }
     final result = widget.engine.execute(
       AcceptSuggestions(
         month: _month,
@@ -90,6 +105,12 @@ class _AssignScreenState extends State<AssignScreen> {
     ];
     final total = checked.fold(Money.zero, (sum, line) => sum + line.amount);
     final readyToAssign = state.readyToAssign(month);
+    // Automation that will run on Accept takes its share before the batch.
+    final autoTotal = widget.runAutomationOnAccept
+        ? state
+              .autoAssignments(month)
+              .fold(Money.zero, (sum, line) => sum + line.amount)
+        : Money.zero;
 
     final uncovered = <Widget>[
       for (final category in state.priority)
@@ -150,7 +171,7 @@ class _AssignScreenState extends State<AssignScreen> {
                 children: [
                   _Hero(
                     readyToAssign: readyToAssign,
-                    after: readyToAssign - total,
+                    after: readyToAssign - autoTotal - total,
                   ),
                   const SizedBox(height: 12),
                   CardBox(

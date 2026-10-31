@@ -875,6 +875,47 @@ void main() {
     expect(find.text('\$380.00'), findsOneWidget);
   });
 
+  testWidgets('Esc on Assign writes nothing, even with a Category on Auto', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    final engine = _engine(seed.log);
+    await _pumpAppAt(tester, const Size(1280, 820), BudgetApp(engine: engine));
+    // Auto is switched on after the first-open run, so a run is still due.
+    engine.execute(
+      SetAutomationMode(categoryId: seed.groceries, mode: AutomationMode.auto),
+    );
+    final events = seed.log.readAll().length;
+    final ready = seed.state.readyToAssign(seed.month);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Assign'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('flow-sheet')), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('flow-sheet')), findsNothing);
+    expect(seed.log.readAll(), hasLength(events));
+    expect(seed.state.readyToAssign(seed.month), ready);
+  });
+
+  testWidgets('Assign shows the month the window is on', (tester) async {
+    final seed = _MonthSeed();
+    await _pumpAppAt(tester, const Size(1280, 820), seed.app());
+
+    await tester.tap(find.byTooltip('Next month'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Assign'));
+    await tester.pumpAndSettle();
+
+    final next = seed.month.next;
+    expect(find.text('Assign · ${monthName(next)}'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('assign-before'))).data,
+      seed.state.readyToAssign(next).formatDollars(),
+    );
+  });
+
   testWidgets('Move money opens as a sheet and updates both Categories', (
     tester,
   ) async {
