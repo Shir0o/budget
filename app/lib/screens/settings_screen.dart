@@ -7,6 +7,7 @@ import '../flows.dart';
 import '../services.dart';
 import '../settings_widgets.dart';
 import '../theme.dart';
+import '../widgets.dart';
 import 'app_lock_screen.dart';
 import 'business_report_screen.dart';
 import 'business_tags_screen.dart';
@@ -21,18 +22,29 @@ import 'join_screen.dart';
 import 'mcp_screen.dart';
 import 'recovery_phrase_screen.dart';
 import 'schedules_screen.dart';
+import 'settings_desktop.dart';
 
-/// Settings (canvas: Settings). It lists only what exists today. A later
-/// ticket adds its row to the matching section in [_sections].
+/// Settings (canvas: Settings). On a phone it is one scrolling list. In the
+/// desktop window it is a pane sidebar beside the chosen pane (ticket 66),
+/// built from the same rows and screens. A later ticket adds its row to the
+/// matching section in [_sections].
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.engine,
     required this.services,
+    this.onOpenBudget,
+    this.onNewBudget,
   });
 
   final BudgetEngine engine;
   final AppServices services;
+
+  /// Opens another Budget in the desktop window, from the Budgets pane.
+  final ValueChanged<String>? onOpenBudget;
+
+  /// Starts a new Budget, from the Budgets pane.
+  final VoidCallback? onNewBudget;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -217,32 +229,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ];
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const BackHeader(title: 'Settings'),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              children: [
-                for (final section in _sections()) ...[
-                  SettingsCard(section: section),
-                  const SizedBox(height: 12),
-                ],
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4),
-                  child: Text(
-                    'No telemetry. Your data stays on your devices.',
-                    style: TextStyle(fontSize: 12, color: Palette.muted),
+  Widget build(BuildContext context) {
+    // Inside the desktop window's content area, Settings is the pane window.
+    if (DesktopWindowScope.maybeOf(context) != null) {
+      return DesktopSettingsView(
+        engine: widget.engine,
+        services: widget.services,
+        onOpenBudget: widget.onOpenBudget,
+        onNewBudget: widget.onNewBudget,
+      );
+    }
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const BackHeader(title: 'Settings'),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                children: [
+                  for (final section in _sections()) ...[
+                    SettingsCard(section: section),
+                    const SizedBox(height: 12),
+                  ],
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      'No telemetry. Your data stays on your devices.',
+                      style: TextStyle(fontSize: 12, color: Palette.muted),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
