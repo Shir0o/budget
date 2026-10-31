@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 
 import 'screens/accounts_screen.dart';
 import 'screens/budget_screen.dart';
+import 'screens/business_report_screen.dart';
+import 'screens/forecast_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/review_screen.dart';
+import 'services.dart';
 import 'theme.dart';
 
 const _months = [
@@ -74,35 +77,73 @@ class AvailablePill extends StatelessWidget {
   }
 }
 
-/// The bottom navigation's tabs.
-enum MainTab { budget, review, accounts, history }
+/// One section of the app. The phone's bottom navigation shows the four with
+/// [inBottomNav]; the desktop sidebar (ticket 61) reads the same model and
+/// lists the accounts below it, so the two layouts can't drift apart.
+enum Section {
+  budget('Budget', Icons.table_chart_outlined, inBottomNav: true),
+  review('Review', Icons.check, inBottomNav: true),
+  accounts('Accounts', Icons.account_balance_outlined, inBottomNav: true),
+  history('History', Icons.schedule, inBottomNav: true),
+  forecast('Forecast', Icons.show_chart),
+  businessReport('Business report', Icons.receipt_long_outlined);
+
+  const Section(this.label, this.icon, {this.inBottomNav = false});
+
+  final String label;
+  final IconData icon;
+  final bool inBottomNav;
+
+  /// The count shown on the section's icon, hidden at 0. Review shows how many
+  /// lines still need Review.
+  int badge(BudgetState state) => switch (this) {
+    Section.review => state.reviewQueue.length,
+    _ => 0,
+  };
+
+  /// This section's screen. On a phone each screen carries the bottom
+  /// navigation itself.
+  Widget screen(BudgetEngine engine, AppServices services) => switch (this) {
+    Section.budget => BudgetScreen(engine: engine),
+    Section.review => ReviewScreen(engine: engine),
+    Section.accounts => AccountsScreen(engine: engine),
+    Section.history => HistoryScreen(engine: engine),
+    Section.forecast => ForecastScreen(engine: engine),
+    Section.businessReport => BusinessReportScreen(
+      engine: engine,
+      services: services,
+    ),
+  };
+}
 
 /// The bottom navigation. Review shows a badge with the Unreviewed count.
 class MainNav extends StatelessWidget {
   const MainNav({super.key, required this.engine, required this.current});
 
   final BudgetEngine engine;
-  final MainTab current;
+  final Section current;
 
-  void _go(BuildContext context, MainTab tab) {
-    if (tab == current) return;
+  /// The sections a phone's bottom navigation shows.
+  static final _tabs = [
+    for (final section in Section.values)
+      if (section.inBottomNav) section,
+  ];
+
+  void _go(BuildContext context, Section section) {
+    if (section == current) return;
+    final services = AppServicesScope.of(context);
     Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
         transitionDuration: Duration.zero,
         reverseTransitionDuration: Duration.zero,
-        pageBuilder: (_, _, _) => switch (tab) {
-          MainTab.budget => BudgetScreen(engine: engine),
-          MainTab.review => ReviewScreen(engine: engine),
-          MainTab.accounts => AccountsScreen(engine: engine),
-          MainTab.history => HistoryScreen(engine: engine),
-        },
+        pageBuilder: (_, _, _) => section.screen(engine, services),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final unreviewed = engine.state.reviewQueue.length;
+    final state = engine.state;
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: Palette.card,
@@ -116,24 +157,14 @@ class MainNav extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(
               children: [
-                for (final (tab, label, icon, badge) in [
-                  (MainTab.budget, 'Budget', Icons.table_chart_outlined, 0),
-                  (MainTab.review, 'Review', Icons.check, unreviewed),
-                  (
-                    MainTab.accounts,
-                    'Accounts',
-                    Icons.account_balance_outlined,
-                    0,
-                  ),
-                  (MainTab.history, 'History', Icons.schedule, 0),
-                ])
+                for (final section in _tabs)
                   Expanded(
                     child: _NavTab(
-                      label: label,
-                      icon: icon,
-                      badge: badge,
-                      selected: tab == current,
-                      onTap: () => _go(context, tab),
+                      label: section.label,
+                      icon: section.icon,
+                      badge: section.badge(state),
+                      selected: section == current,
+                      onTap: () => _go(context, section),
                     ),
                   ),
               ],

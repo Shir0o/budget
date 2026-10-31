@@ -2,6 +2,7 @@ import 'package:budget_core/budget_core.dart';
 import 'package:budget_simplefin/budget_simplefin.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../services.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -45,9 +46,19 @@ class _AccountsScreenState extends State<AccountsScreen> {
   Future<void> _open(Widget screen) async {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
+    await _refresh();
+  }
+
+  /// Opens one of the short flows (ticket 60), then rereads the bank's book.
+  Future<void> _openFlow(Widget screen) async {
+    await openFlow<void>(context, builder: (_) => screen);
+    await _refresh();
+  }
+
+  /// A fetch or a reconcile may have changed the budget or the bank's
+  /// balance.
+  Future<void> _refresh() async {
     if (!mounted) return;
-    // A fetch or a reconcile may have changed the budget or the bank's
-    // balance.
     await _readBook();
     if (mounted) setState(() {});
   }
@@ -81,7 +92,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
             detail: _detail(state, a, month),
             discrepancy: discrepancies[a.id],
             onReconcile: () =>
-                _open(ReconcileScreen(engine: engine, accountId: a.id)),
+                _openFlow(ReconcileScreen(engine: engine, accountId: a.id)),
             onTap: () =>
                 _open(AccountRegisterScreen(engine: engine, accountId: a.id)),
           ),
@@ -89,7 +100,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
     );
 
     return Scaffold(
-      bottomNavigationBar: MainNav(engine: engine, current: MainTab.accounts),
+      bottomNavigationBar: MainNav(engine: engine, current: Section.accounts),
       body: SafeArea(
         bottom: false,
         child: ListView(
@@ -158,7 +169,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
               const SizedBox(height: 12),
             ],
             OutlinedButton.icon(
-              onPressed: () => _open(AddAccountScreen(engine: engine)),
+              onPressed: () => _openFlow(AddAccountScreen(engine: engine)),
               icon: const Icon(Icons.add, size: 16),
               label: const Text('Add account'),
             ),

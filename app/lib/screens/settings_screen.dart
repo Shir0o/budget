@@ -3,6 +3,7 @@ import 'package:budget_mcp/budget_mcp.dart';
 import 'package:budget_sync/budget_sync.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../services.dart';
 import '../settings_widgets.dart';
 import '../theme.dart';
@@ -66,6 +67,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _open(Widget screen) async {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
+    await _afterOpen();
+  }
+
+  /// Opens one of the short flows (ticket 60).
+  Future<void> _openFlow(Widget screen) async {
+    await openFlow<void>(context, builder: (_) => screen);
+    await _afterOpen();
+  }
+
+  Future<void> _afterOpen() async {
     // The App lock and Encrypted sync rows' values may have changed.
     await _readSyncBook();
     await _readMcpMode();
@@ -140,7 +151,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SettingsRow(
           label: 'Bank sync',
           value: 'SimpleFIN',
-          onTap: () => _open(
+          onTap: () => _openFlow(
             ConnectBankScreen(engine: widget.engine, services: widget.services),
           ),
         ),

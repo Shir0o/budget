@@ -1,6 +1,7 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../services.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -138,11 +139,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       return;
     }
     setState(() => _nameError = null);
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            AddAccountScreen(engine: widget.engine, newBudgetName: _name.text),
-      ),
+    openFlow<void>(
+      context,
+      builder: (_) =>
+          AddAccountScreen(engine: widget.engine, newBudgetName: _name.text),
     );
   }
 

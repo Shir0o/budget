@@ -1,6 +1,7 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'history_screen.dart';
@@ -36,6 +37,12 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
     setState(() {}); // The engine's state may have changed.
   }
 
+  /// Opens one of the short flows (ticket 60), then shows the new numbers.
+  Future<void> _openFlow(Widget screen) async {
+    await openFlow<void>(context, builder: (_) => screen);
+    setState(() {}); // The engine's state may have changed.
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = widget.engine.state;
@@ -45,7 +52,7 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
       floatingActionButton: _showHistory
           ? null
           : FloatingActionButton(
-              onPressed: () => _open(
+              onPressed: () => _openFlow(
                 NewTransactionScreen(engine: widget.engine, accountId: id),
               ),
               tooltip: 'New transaction',
@@ -84,7 +91,7 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
                     ),
                   ),
                   OutlinedButton(
-                    onPressed: () => _open(
+                    onPressed: () => _openFlow(
                       ReconcileScreen(engine: widget.engine, accountId: id),
                     ),
                     style: OutlinedButton.styleFrom(

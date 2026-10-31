@@ -1,6 +1,7 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'category_picker.dart';
@@ -53,15 +54,14 @@ class _AssignScreenState extends State<AssignScreen> {
       await _fund(categoryId, shortfall);
       return;
     }
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => MoveMoneyScreen(
-          engine: widget.engine,
-          fromCategoryId: from,
-          toCategoryId: categoryId,
-          month: _month,
-          amount: shortfall,
-        ),
+    await openFlow<void>(
+      context,
+      builder: (_) => MoveMoneyScreen(
+        engine: widget.engine,
+        fromCategoryId: from,
+        toCategoryId: categoryId,
+        month: _month,
+        amount: shortfall,
       ),
     );
     setState(() {});

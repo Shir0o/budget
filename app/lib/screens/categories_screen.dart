@@ -1,6 +1,7 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'add_category_screen.dart';
@@ -23,6 +24,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
     setState(() {});
+  }
+
+  /// Opens Add category, one of the short flows (ticket 60).
+  Future<void> _openFlow(Widget screen) async {
+    await openFlow<void>(context, builder: (_) => screen);
+    if (mounted) setState(() {});
   }
 
   void _reorder(List<Category> categories, int from, int to) {
@@ -69,7 +76,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   ),
                   OutlinedButton(
                     onPressed: () =>
-                        _open(AddCategoryScreen(engine: widget.engine)),
+                        _openFlow(AddCategoryScreen(engine: widget.engine)),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 44),
                       padding: const EdgeInsets.symmetric(horizontal: 14),

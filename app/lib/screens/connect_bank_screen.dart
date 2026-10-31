@@ -3,6 +3,7 @@ import 'package:budget_simplefin/budget_simplefin.dart';
 import 'package:flutter/material.dart';
 
 import '../bank_sync.dart';
+import '../flows.dart';
 import '../services.dart';
 import '../settings_widgets.dart';
 import '../theme.dart';
@@ -121,15 +122,14 @@ class _ConnectBankScreenState extends State<ConnectBankScreen> {
   }
 
   Future<void> _openLinks(List<ClaimedAccount> accounts) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => LinkAccountsScreen(
-          engine: widget.engine,
-          services: widget.services,
-          book: _book,
-          accounts: accounts,
-          today: today(),
-        ),
+    await openFlow<void>(
+      context,
+      builder: (_) => LinkAccountsScreen(
+        engine: widget.engine,
+        services: widget.services,
+        book: _book,
+        accounts: accounts,
+        today: today(),
       ),
     );
     if (!mounted) return;

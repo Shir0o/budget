@@ -1,6 +1,7 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../settings_widgets.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -22,9 +23,9 @@ class SchedulesScreen extends StatefulWidget {
 class _SchedulesScreenState extends State<SchedulesScreen> {
   BudgetState get _state => widget.engine.state;
 
+  /// Opens Edit schedule, one of the short flows (ticket 60).
   Future<void> _open(EditScheduleScreen screen) async {
-    await Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => screen));
+    await openFlow<void>(context, builder: (_) => screen);
     setState(() {}); // The engine's state may have changed.
   }
 

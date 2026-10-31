@@ -1,6 +1,7 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../services.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -52,13 +53,19 @@ class _BudgetScreenState extends State<BudgetScreen> {
   /// A run by hand, then this month's Suggestion Batch.
   Future<void> _assign() {
     widget.engine.execute(RunAutomation(month: thisMonth()));
-    return _open(AssignScreen(engine: widget.engine));
+    return _openFlow(AssignScreen(engine: widget.engine));
   }
 
   Future<void> _open(Widget screen) async {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
     setState(() {}); // The engine's state may have changed.
+  }
+
+  /// Opens one of the short flows (ticket 60), then shows the new numbers.
+  Future<void> _openFlow(Widget screen) async {
+    await openFlow<void>(context, builder: (_) => screen);
+    if (mounted) setState(() {});
   }
 
   @override
@@ -77,7 +84,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
     ].where((entry) => entry.$2.isNotEmpty).toList();
 
     return Scaffold(
-      bottomNavigationBar: MainNav(engine: engine, current: MainTab.budget),
+      bottomNavigationBar: MainNav(engine: engine, current: Section.budget),
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -191,17 +198,17 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     children: [
                       OutlinedButton(
                         onPressed: () =>
-                            _open(NewTransactionScreen(engine: engine)),
+                            _openFlow(NewTransactionScreen(engine: engine)),
                         child: const Text('New transaction'),
                       ),
                       OutlinedButton(
                         onPressed: () =>
-                            _open(AddCategoryScreen(engine: engine)),
+                            _openFlow(AddCategoryScreen(engine: engine)),
                         child: const Text('Add category'),
                       ),
                       OutlinedButton(
                         onPressed: () =>
-                            _open(AddAccountScreen(engine: engine)),
+                            _openFlow(AddAccountScreen(engine: engine)),
                         child: const Text('Add account'),
                       ),
                     ],
