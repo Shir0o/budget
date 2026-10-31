@@ -418,6 +418,93 @@ void main() {
     expect(seed.state.transaction(seed.cafe)!.lines, hasLength(1));
   });
 
+  testWidgets('Split hides suggested values and Save leaves the line in '
+      'Review (ADR 0003)', (tester) async {
+    final seed = _Seed();
+    final paper = seed.state.transaction(seed.paper)!;
+    final lineId = paper.lines.single.id;
+    // An app fills in everything Review asks for, without finishing it.
+    seed
+        ._engine(Actor.automation)
+        .execute(
+          SuggestReview(
+            transactionId: paper.id,
+            lineId: lineId,
+            business: const Personal(),
+          ),
+        );
+    await _pumpDesktop(tester, seed.app());
+    await _openReview(tester);
+    await _tap(tester, _row(paper.id, lineId));
+
+    await _tap(tester, find.byKey(const ValueKey('review-split')));
+    Finder inSheet(String text) =>
+        find.descendant(of: _sheet, matching: find.text(text));
+    expect(inSheet('Uncategorized'), findsOneWidget);
+    expect(inSheet('Groceries'), findsNothing);
+    expect(inSheet('Personal'), findsNothing);
+
+    await _tap(tester, inSheet('Save'));
+
+    expect(_sheet, findsNothing);
+    final line = seed.state.transaction(seed.paper)!.lines.single;
+    expect(line.reviewed, isFalse);
+    expect(line.category, seed.groceries);
+    expect(
+      seed.state.reviewQueue.any((item) => item.transaction.id == seed.paper),
+      isTrue,
+    );
+  });
+
+  testWidgets('Split keeps the sheet open and says why Save was refused', (
+    tester,
+  ) async {
+    final seed = _Seed();
+    seed
+        ._engine(Actor.userAndroid)
+        .execute(
+          EditTransaction(
+            transactionId: seed.cafe,
+            cleared: ClearedStatus.reconciled,
+          ),
+        );
+    await _pumpDesktop(tester, seed.app());
+    await _openReview(tester);
+    expect(_inDetail('Cafe'), findsOneWidget);
+
+    await _tap(tester, find.byKey(const ValueKey('review-split')));
+    await _tap(
+      tester,
+      find.descendant(of: _sheet, matching: find.text('Save')),
+    );
+
+    expect(_sheet, findsOneWidget);
+    expect(find.byKey(const ValueKey('split-error')), findsOneWidget);
+    expect(find.textContaining('reconciled'), findsOneWidget);
+  });
+
+  testWidgets('A fetch that adds a newer line keeps the selection', (
+    tester,
+  ) async {
+    final seed = _Seed();
+    final services = _services();
+    await services.prefs.writeSimpleFinBook(_book(seed.checking));
+    await _pumpDesktop(
+      tester,
+      BudgetApp(engine: seed._engine(Actor.userAndroid), services: services),
+    );
+    await _openReview(tester);
+    expect(_inDetail('Cafe'), findsOneWidget);
+    await _tap(tester, find.byKey(const ValueKey('review-category')));
+    await _tap(tester, find.byKey(ValueKey('pick-${seed.groceries}')));
+
+    await _tap(tester, find.byKey(const ValueKey('review-fetch')));
+
+    expect(_inList('Corner Bistro'), findsOneWidget);
+    expect(_inDetail('Cafe'), findsOneWidget);
+    expect(_inDetail('Groceries'), findsOneWidget);
+  });
+
   testWidgets('Fetch from bank pulls a new line into Review', (tester) async {
     final seed = _Seed();
     final services = _services();
@@ -462,6 +549,11 @@ void main() {
 
     expect(_inList('Corner Bistro'), findsOneWidget);
     expect(_inDetail('Possible match'), findsOneWidget);
+    // Like the sidebar badge, the count leaves out a line waiting on a
+    // possible match.
+    expect(seed.engine.state.reviewQueue, isEmpty);
+    expect(find.byKey(const ValueKey('review-count')), findsOneWidget);
+    expect(find.text('0 to review'), findsOneWidget);
     await _tap(tester, find.byKey(const ValueKey('review-compare')));
 
     expect(_sheet, findsOneWidget);
