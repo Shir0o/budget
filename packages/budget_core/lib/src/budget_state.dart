@@ -342,6 +342,9 @@ final class BudgetState {
   /// Card Payment Category ids by card account id.
   final _cardPayment = <String, String>{};
 
+  /// The last reconcile of each account (ticket 09).
+  final _reconciles = <String, ({CivilDate date, Money bankBalance})>{};
+
   /// Targets, Automation Modes and the priority order (ticket 08).
   final _targets = <String, Target>{};
   final _modes = <String, AutomationMode>{};
@@ -400,6 +403,11 @@ final class BudgetState {
         t.cleared != ClearedStatus.uncleared &&
         (asOf == null || t.date.compareTo(asOf) <= 0),
   );
+
+  /// [accountId]'s last reconcile: the date it was done and the bank balance
+  /// it matched. Null until the first one (ticket 09).
+  ({CivilDate date, Money bankBalance})? lastReconcile(String accountId) =>
+      _reconciles[accountId];
 
   Money _sum(String accountId, bool Function(Transaction) include) {
     var total = Money.zero;
@@ -646,6 +654,10 @@ final class BudgetState {
         // its date are locked. One a device clears after it stays cleared.
         final accountId = p['accountId'] as String;
         final date = CivilDate.parse(p['date'] as String);
+        _reconciles[accountId] = (
+          date: date,
+          bankBalance: Money(p['clearedBalanceCents'] as int),
+        );
         for (final t in _transactions.values.toList()) {
           if (t.accountId == accountId &&
               t.cleared == ClearedStatus.cleared &&

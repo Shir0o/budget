@@ -7,6 +7,7 @@ import '../widgets.dart';
 import 'history_screen.dart';
 import 'new_transaction_screen.dart';
 import 'reconcile_screen.dart';
+import 'register_desktop.dart';
 import 'transaction_parts.dart';
 import 'transaction_screen.dart';
 
@@ -45,6 +46,14 @@ class _AccountRegisterScreenState extends State<AccountRegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // In the desktop window the register is the wide table with a running
+    // balance and Reconcile as a sheet (ticket 65). The phone keeps this one.
+    if (DesktopWindowScope.maybeOf(context) != null) {
+      return DesktopAccountRegister(
+        engine: widget.engine,
+        accountId: widget.accountId,
+      );
+    }
     final state = widget.engine.state;
     final id = widget.accountId;
     final transactions = state.register(id);
