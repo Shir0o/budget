@@ -28,6 +28,7 @@ const actorChips = [
   (ActorKind.person, 'You'),
   (ActorKind.bankSync, 'Bank sync'),
   (ActorKind.automation, 'Automation'),
+  (ActorKind.import, 'Import'),
   (ActorKind.mcp, 'MCP'),
 ];
 

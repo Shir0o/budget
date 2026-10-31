@@ -79,6 +79,28 @@ void main() {
     expect(budget.state.clearedBalance(budget.checking), const Money(48000));
   });
 
+  test('the latest statement date is the last reconcile, in any order', () {
+    final budget = _Budget();
+    expect(budget.reconcile(48000), isA<Accepted>()); // statement Nov 13
+
+    // Another device later reconciles an older statement (Nov 10).
+    final b = BudgetEngine(
+      log: InMemoryEventLog(),
+      deviceId: 'device-b',
+      actor: Actor.userMac,
+    )..merge(budget.engine.events);
+    b.execute(
+      Reconcile(
+        accountId: budget.checking,
+        date: CivilDate(2026, 11, 10),
+        bankBalance: const Money(48000),
+        addAdjustment: false,
+      ),
+    );
+
+    expect(b.state.lastReconcile(budget.checking)?.date, _nov13);
+  });
+
   test('a mismatch is rejected and changes nothing', () {
     final budget = _Budget();
     final before = budget.engine.events.length;
