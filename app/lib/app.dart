@@ -3,10 +3,8 @@ import 'package:flutter/material.dart';
 
 import 'app_lock_gate.dart';
 import 'budget_library.dart';
-import 'desktop.dart';
-import 'screens/budget_screen.dart';
-import 'screens/welcome_screen.dart';
 import 'services.dart';
+import 'shell.dart';
 import 'theme.dart';
 
 class BudgetApp extends StatelessWidget {
@@ -31,17 +29,16 @@ class BudgetApp extends StatelessWidget {
     title: 'Budget',
     debugShowCheckedModeBanner: false,
     theme: buildTheme(),
+    // The lock screen covers the whole window, and the shell frames the app's
+    // screens: the phone app below the breakpoint, a Mac window above it
+    // (ticket 61).
     builder: (context, child) => BudgetLibraryScope(
       library: library,
       child: AppServicesScope(
         services: services,
-        child: DesktopFrame(
-          child: AppLockGate(services: services, child: child!),
-        ),
+        child: AppLockGate(services: services, child: child!),
       ),
     ),
-    home: library.current.state.budget == null
-        ? WelcomeScreen(engine: library.current)
-        : BudgetScreen(engine: library.current),
+    home: const DesktopShell(),
   );
 }

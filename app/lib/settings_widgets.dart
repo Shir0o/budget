@@ -14,13 +14,15 @@ class BackHeader extends StatelessWidget {
     child: Row(
       spacing: 4,
       children: [
-        IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          tooltip: 'Back',
-          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-          color: Palette.ink,
-          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-        ),
+        // A section in the desktop window's content area has nothing to pop.
+        if (Navigator.canPop(context))
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            tooltip: 'Back',
+            icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+            color: Palette.ink,
+            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+          ),
         Expanded(
           child: Text(
             title,

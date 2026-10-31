@@ -72,6 +72,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
   Widget build(BuildContext context) {
     final engine = widget.engine;
     final state = engine.state;
+    // In the desktop window the toolbar carries the budget name, the month and
+    // Settings, so the phone's header is not repeated here.
+    final window = DesktopWindowScope.maybeOf(context);
+    final month = window?.month ?? _month;
     final groups = [
       for (final group in state.categoryGroups)
         (
@@ -96,60 +100,69 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: 14,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Semantics(
-                        button: true,
-                        label: 'Switch budget',
-                        child: InkWell(
-                          onTap: () => showBudgetSwitcher(context),
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 44),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              spacing: 6,
-                              children: [
-                                Text(
-                                  state.budget?.name ?? '',
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
+                  if (window == null)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Semantics(
+                          button: true,
+                          label: 'Switch budget',
+                          child: InkWell(
+                            onTap: () => showBudgetSwitcher(context),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(minHeight: 44),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                spacing: 6,
+                                children: [
+                                  Text(
+                                    state.budget?.name ?? '',
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                                const Icon(Icons.keyboard_arrow_down, size: 16),
-                              ],
+                                  const Icon(
+                                    Icons.keyboard_arrow_down,
+                                    size: 16,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      Row(
-                        children: [
-                          _MonthSwitcher(
-                            month: _month,
-                            onChanged: (month) =>
-                                setState(() => _month = month),
-                          ),
-                          IconButton(
-                            onPressed: () => _open(
-                              SettingsScreen(
-                                engine: widget.engine,
-                                services: AppServicesScope.of(context),
+                        Row(
+                          children: [
+                            MonthSwitcher(
+                              month: month,
+                              onChanged: (changed) {
+                                if (window case final desktop?) {
+                                  desktop.onMonthChanged(changed);
+                                } else {
+                                  setState(() => _month = changed);
+                                }
+                              },
+                            ),
+                            IconButton(
+                              onPressed: () => _open(
+                                SettingsScreen(
+                                  engine: widget.engine,
+                                  services: AppServicesScope.of(context),
+                                ),
+                              ),
+                              tooltip: 'Settings',
+                              icon: const Icon(Icons.settings_outlined),
+                              color: Palette.ink,
+                              iconSize: 22,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 44,
+                                height: 44,
                               ),
                             ),
-                            tooltip: 'Settings',
-                            icon: const Icon(Icons.settings_outlined),
-                            color: Palette.ink,
-                            iconSize: 22,
-                            constraints: const BoxConstraints.tightFor(
-                              width: 44,
-                              height: 44,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                          ],
+                        ),
+                      ],
+                    ),
                   _ReadyToAssignCard(
                     amount: state.readyToAssign(thisMonth()),
                     onAssign: _assign,
@@ -170,12 +183,12 @@ class _BudgetScreenState extends State<BudgetScreen> {
                           _CategoryRow(
                             state: state,
                             category: category,
-                            month: _month,
+                            month: month,
                             onTap: () => _open(
                               CategoryScreen(
                                 engine: engine,
                                 categoryId: category.id,
-                                month: _month,
+                                month: month,
                               ),
                             ),
                           ),
@@ -219,44 +232,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _MonthSwitcher extends StatelessWidget {
-  const _MonthSwitcher({required this.month, required this.onChanged});
-
-  final CalendarMonth month;
-  final ValueChanged<CalendarMonth> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    const size = BoxConstraints.tightFor(width: 44, height: 44);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      spacing: 2,
-      children: [
-        IconButton(
-          onPressed: () => onChanged(month.previous),
-          tooltip: 'Previous month',
-          constraints: size,
-          icon: const Icon(Icons.chevron_left, color: Palette.muted),
-        ),
-        SizedBox(
-          width: 96,
-          child: Text(
-            formatMonth(month),
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-        ),
-        IconButton(
-          onPressed: () => onChanged(month.next),
-          tooltip: 'Next month',
-          constraints: size,
-          icon: const Icon(Icons.chevron_right, color: Palette.muted),
-        ),
-      ],
     );
   }
 }

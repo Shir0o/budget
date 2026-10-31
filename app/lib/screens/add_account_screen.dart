@@ -2,9 +2,9 @@ import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
 import '../budget_library.dart';
+import '../shell.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'budget_screen.dart';
 
 const _typeLabels = {
   AccountType.checking: 'Checking',
@@ -80,9 +80,11 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
     if (newBudgetName != null) {
       // The new budget gets its own store file and key now.
       _saving = true;
-      final stored = await library.commit(engine);
+      await library.commit(engine);
+      // The app window opens on the new budget: the phone app, or the Mac
+      // window above the breakpoint.
       navigator.pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => BudgetScreen(engine: stored)),
+        MaterialPageRoute<void>(builder: (_) => const DesktopShell()),
         (_) => false,
       );
     } else {
