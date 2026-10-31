@@ -363,8 +363,15 @@ void main() {
     expect(find.text('Re-authenticate with your bank.'), findsOneWidget);
 
     // Back to Settings and into Bank sync again: the message is kept, not
-    // swallowed when the fetch screen closes.
-    await _tap(tester, find.byTooltip('Back'));
+    // swallowed when the fetch screen closes. The sheet is over Settings,
+    // which keeps its own Back button, so tap the sheet's.
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byKey(const ValueKey('flow-sheet')),
+        matching: find.byTooltip('Back'),
+      ),
+    );
     await _tap(tester, find.text('Bank sync'));
     expect(find.text('Re-authenticate with your bank.'), findsOneWidget);
     final book = await services.prefs.readSimpleFinBook();

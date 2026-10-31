@@ -14,6 +14,9 @@ const _typeLabels = {
   AccountType.tracking: 'Tracking',
 };
 
+/// Four digits, and only four, so a full account number is never stored.
+bool _isLast4(String value) => RegExp(r'^\d{4}$').hasMatch(value);
+
 /// Add account (canvas: AddAccount). On first run, [newBudgetName] is set
 /// and the budget is created together with its first account.
 class AddAccountScreen extends StatefulWidget {
@@ -30,15 +33,18 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
   var _type = AccountType.checking;
   final _name = TextEditingController(text: _typeLabels[AccountType.checking]);
   var _nameEdited = false;
+  final _last4 = TextEditingController();
   final _balance = TextEditingController();
   var _asOf = today();
   String? _nameError;
+  String? _last4Error;
   String? _balanceError;
   var _saving = false;
 
   @override
   void dispose() {
     _name.dispose();
+    _last4.dispose();
     _balance.dispose();
     super.dispose();
   }
@@ -53,11 +59,15 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
     final balance = _balance.text.trim().isEmpty
         ? Money.zero
         : Money.tryParse(_balance.text);
+    final last4 = _last4.text.trim();
     setState(() {
       _nameError = _name.text.trim().isEmpty ? 'Name the account' : null;
+      _last4Error = last4.isNotEmpty && !_isLast4(last4)
+          ? 'Enter the last 4 digits'
+          : null;
       _balanceError = balance == null ? 'Enter an amount like 1,234.56' : null;
     });
-    if (_nameError != null || balance == null) return;
+    if (_nameError != null || _last4Error != null || balance == null) return;
 
     final engine = widget.engine;
     final library = BudgetLibraryScope.of(context);
@@ -67,7 +77,10 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
     }
     final result = engine.execute(
       AddAccount(
-        name: _name.text,
+        // Only the last four digits are ever kept, and they are part of the
+        // name so they can be read in the sidebar. A full number is never
+        // asked for (ticket 63).
+        name: last4.isEmpty ? _name.text : '${_name.text} ••$last4',
         type: _type,
         // A card's balance is entered as the amount owed.
         startingBalance: _type == AccountType.creditCard ? -balance : balance,
@@ -149,6 +162,28 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                             textCapitalization: TextCapitalization.words,
                             style: const TextStyle(fontSize: 15),
                             decoration: InputDecoration(errorText: _nameError),
+                          ),
+                        ),
+                        LabeledField(
+                          label: 'Last 4 digits',
+                          child: TextField(
+                            key: const ValueKey('account-last4'),
+                            controller: _last4,
+                            keyboardType: TextInputType.number,
+                            maxLength: 4,
+                            style: amountStyle(),
+                            decoration: InputDecoration(
+                              hintText: '1234',
+                              counterText: '',
+                              errorText: _last4Error,
+                              helperText: _last4Error == null
+                                  ? 'Optional. Never a full number.'
+                                  : null,
+                              helperStyle: const TextStyle(
+                                fontSize: 12,
+                                color: Palette.muted,
+                              ),
+                            ),
                           ),
                         ),
                         Row(

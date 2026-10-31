@@ -1,8 +1,10 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
 
+import '../flows.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'edit_schedule_screen.dart';
 import 'transaction_parts.dart';
 
 /// Enters a transaction by hand (canvas: AddTransaction). An inflow to
@@ -98,6 +100,38 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       ),
     ],
   );
+
+  /// Turns what is entered so far into a Scheduled Transaction: "Repeat
+  /// this" on the sheet. A schedule never counts in the budget until it is
+  /// entered, so this doesn't record a transaction.
+  Future<void> _repeat() async {
+    final magnitude = _magnitude;
+    final accountId = _accountId;
+    if (magnitude == null || magnitude == Money.zero || accountId == null) {
+      setState(() => _amountError = 'Enter an amount above 0.00');
+      return;
+    }
+    if (_outflow && _category == null) {
+      await _pickCategory();
+      if (!mounted || _category == null) return;
+    }
+    await openFlow<void>(
+      context,
+      builder: (_) => EditScheduleScreen(
+        engine: widget.engine,
+        suggestion: RecurringSuggestion(
+          payee: _payee.text,
+          amount: _outflow ? -magnitude : magnitude,
+          accountId: accountId,
+          category: _outflow ? _category! : readyToAssignCategory,
+          every: 1,
+          interval: TargetInterval.months,
+          nextDue: _date,
+          count: 1,
+        ),
+      ),
+    );
+  }
 
   Future<void> _editLine(int index) async {
     final lines = _lines!;
@@ -437,10 +471,18 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                               onTap: _pickCategory,
                               child: Align(
                                 alignment: Alignment.centerRight,
-                                child: _Choice(
-                                  _category == null
+                                child: _CategoryChoice(
+                                  name: _category == null
                                       ? 'Choose'
                                       : categoryName(state, _category),
+                                  // The month's Available, so a Category is
+                                  // chosen with its balance in mind.
+                                  available: _category == null
+                                      ? null
+                                      : state.available(
+                                          _category!,
+                                          CalendarMonth.of(_date),
+                                        ),
                                 ),
                               ),
                             ),
@@ -521,7 +563,15 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                     Row(
                       children: [
                         Expanded(child: Hint(_reviewHint)),
-                        if (lines == null)
+                        if (lines == null) ...[
+                          TextButton(
+                            onPressed: _repeat,
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(44, 44),
+                              foregroundColor: Palette.teal,
+                            ),
+                            child: const Text('Repeat'),
+                          ),
                           TextButton(
                             onPressed: _split,
                             style: TextButton.styleFrom(
@@ -530,6 +580,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
                             ),
                             child: const Text('Split'),
                           ),
+                        ],
                       ],
                     ),
                 ],
@@ -617,4 +668,49 @@ class _Choice extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// The chosen Category, with the month's Available under it.
+class _CategoryChoice extends StatelessWidget {
+  const _CategoryChoice({required this.name, this.available});
+
+  final String name;
+
+  /// Null until a Category is chosen.
+  final Money? available;
+
+  @override
+  Widget build(BuildContext context) {
+    final available = this.available;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 44),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 4,
+        children: [
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              spacing: 2,
+              children: [
+                Text(
+                  name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 15),
+                ),
+                if (available != null)
+                  Text(
+                    '${available.format()} available',
+                    key: const ValueKey('transaction-category-available'),
+                    style: const TextStyle(fontSize: 12, color: Palette.muted),
+                  ),
+              ],
+            ),
+          ),
+          const Icon(Icons.keyboard_arrow_down, size: 18, color: Palette.ink),
+        ],
+      ),
+    );
+  }
 }

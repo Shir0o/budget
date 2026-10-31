@@ -226,6 +226,7 @@ class _DesktopShellState extends State<DesktopShell> {
           : DesktopWindowScope(
               month: _month,
               onMonthChanged: (month) => setState(() => _month = month),
+              state: engine.state,
               child: Scaffold(
                 body: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -14,6 +14,7 @@ import 'package:budget/theme.dart';
 import 'package:budget/widgets.dart';
 import 'package:budget_core/budget_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// A synthetic budget: a checking account, a card with a balance owed, a
@@ -771,5 +772,191 @@ void main() {
     await tester.tap(find.text('Groceries'));
     await tester.pumpAndSettle();
     expect(find.byTooltip('Back to budget'), findsOneWidget);
+  });
+
+  testWidgets('New transaction opens as a sheet and updates Available', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    await _pumpAppAt(tester, const Size(1280, 820), seed.app());
+    final sheet = find.byKey(const ValueKey('flow-sheet'));
+
+    await tester.tap(find.widgetWithText(FilledButton, 'New transaction'));
+    await tester.pumpAndSettle();
+    expect(sheet, findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('transaction-amount')),
+      '25.00',
+    );
+    await tester.tap(find.text('Category'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('pick-${seed.groceries}')));
+    await tester.pumpAndSettle();
+
+    // The sheet shows the Category's Available, and Split and Repeat.
+    expect(find.text('60.00 available'), findsOneWidget);
+    expect(find.text('Split'), findsOneWidget);
+    expect(find.text('Repeat'), findsOneWidget);
+
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(sheet, findsNothing);
+    expect(seed.state.available(seed.groceries, seed.month), const Money(3500));
+    expect(
+      tester
+          .widget<AvailablePill>(
+            find.descendant(
+              of: find.byKey(ValueKey('category-${seed.groceries}')),
+              matching: find.byType(AvailablePill),
+            ),
+          )
+          .amount,
+      const Money(3500),
+    );
+  });
+
+  testWidgets('Esc closes a sheet without saving anything', (tester) async {
+    final seed = _MonthSeed();
+    await _pumpAppAt(tester, const Size(1280, 820), seed.app());
+    final sheet = find.byKey(const ValueKey('flow-sheet'));
+    final transactions = seed.state.transactions.length;
+
+    await tester.tap(find.widgetWithText(FilledButton, 'New transaction'));
+    await tester.pumpAndSettle();
+    expect(sheet, findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('transaction-amount')),
+      '25.00',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    expect(sheet, findsNothing);
+    expect(seed.state.transactions, hasLength(transactions));
+    expect(seed.state.readyToAssign(seed.month), const Money(42000));
+    expect(find.text('\$420.00'), findsOneWidget);
+  });
+
+  testWidgets('Assign is a sheet with Ready to Assign before and after', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    await _pumpAppAt(tester, const Size(1280, 820), seed.app());
+    final sheet = find.byKey(const ValueKey('flow-sheet'));
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Assign'));
+    await tester.pumpAndSettle();
+    expect(sheet, findsOneWidget);
+
+    String amount(String key) =>
+        tester.widget<Text>(find.byKey(ValueKey(key))).data!;
+
+    // Ready to Assign before, and after the whole batch.
+    expect(amount('assign-before'), '\$420.00');
+    expect(amount('assign-after'), '\$380.00');
+
+    // Unticking the line gives its money back.
+    await tester.tap(find.byKey(ValueKey('assign-${seed.groceries}')));
+    await tester.pumpAndSettle();
+    expect(amount('assign-after'), '\$420.00');
+
+    await tester.tap(find.byKey(ValueKey('assign-${seed.groceries}')));
+    await tester.pumpAndSettle();
+    expect(amount('assign-after'), '\$380.00');
+
+    await tester.tap(find.textContaining('Accept 1 line'));
+    await tester.pumpAndSettle();
+
+    expect(sheet, findsNothing);
+    expect(seed.state.readyToAssign(seed.month), const Money(38000));
+    expect(find.text('\$380.00'), findsOneWidget);
+  });
+
+  testWidgets('Move money opens as a sheet and updates both Categories', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    await _pumpAppAt(tester, const Size(1280, 820), seed.app());
+
+    await tester.tap(find.byKey(ValueKey('category-${seed.groceries}')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move money'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('flow-sheet')), findsOneWidget);
+
+    await tester.tap(find.text('Choose a Category'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('pick-${seed.dining}')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('move-amount')), '20.00');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move \$20.00'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('flow-sheet')), findsNothing);
+    for (final (id, cents) in [(seed.groceries, 4000), (seed.dining, -1000)]) {
+      expect(
+        tester
+            .widget<AvailablePill>(
+              find.descendant(
+                of: find.byKey(ValueKey('category-$id')),
+                matching: find.byType(AvailablePill),
+              ),
+            )
+            .amount,
+        Money(cents),
+        reason: id,
+      );
+    }
+  });
+
+  testWidgets('Add account is a sheet that asks only for the last 4 digits', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    await _pumpAppAt(tester, const Size(1280, 820), seed.app());
+
+    await tester.tap(_inSidebar('Add account'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('flow-sheet')), findsOneWidget);
+    expect(find.byKey(const ValueKey('account-last4')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('account-name')),
+      'Savings',
+    );
+    await tester.enterText(find.byKey(const ValueKey('account-last4')), '4321');
+    await tester.enterText(
+      find.byKey(const ValueKey('account-balance')),
+      '100.00',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('flow-sheet')), findsNothing);
+    expect(_inSidebar('Savings ••4321'), findsOneWidget);
+    expect(
+      seed.state.accounts.any((account) => account.name == 'Savings ••4321'),
+      isTrue,
+    );
+  });
+
+  testWidgets('a phone still opens a flow as a full-screen route', (
+    tester,
+  ) async {
+    final seed = _MonthSeed();
+    await _pumpAt(tester, const Size(390, 844), seed.engine);
+
+    final button = find.widgetWithText(OutlinedButton, 'New transaction');
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('flow-sheet')), findsNothing);
+    expect(find.byTooltip('Close'), findsOneWidget);
+    expect(find.byKey(const ValueKey('transaction-amount')), findsOneWidget);
   });
 }
