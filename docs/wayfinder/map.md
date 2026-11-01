@@ -33,6 +33,7 @@ A complete business-logic spec for a private, local-first, zero-based envelope b
 - [Open-source repo settings](tickets/16-open-source-repo-settings.md): public `Shir0o/budget`, MIT, org Tier 2 now and Tier 1 with the first code, push protection, `no-real-data` CI check.
 - [Provide real Actual and YNAB exports](tickets/05-provide-sample-exports.md): exported zips placed in `private/` and validated locally.
 - [Verify migration against real exports](tickets/18-verify-migration-against-real-exports.md): formats, YNAB custom flag labels, `#tags` (564 tagged), and account/category pairings verified against real exports.
+- [Asset tracking, amortization, and cost-per-use](tickets/19-asset-tracking-and-amortization.md): analytical overlay for durable assets; tracks both time elapsed and discrete uses; net cost after resale; bridge to replacement Targets.
 
 ## Open tickets (frontier)
 
