@@ -73,6 +73,13 @@ _Avoid_: Off-budget account
 
 ### Integrations and history
 
+**Asset**:
+A physical durable good (laptop, vehicle, tool) tracked as an analytical overlay to measure cost-of-ownership over time and per use without altering cash envelopes.
+_Avoid_: Fixed asset, capital asset
+
+**Asset Use**:
+A logged instance of using an asset, used to compute cost-per-use (`Net Cost / Total Uses`).
+
 **Event**:
 One immutable, attributed change to a budget. The budget's state is the replay of its Events.
 
