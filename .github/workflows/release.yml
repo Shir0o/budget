@@ -244,7 +244,6 @@ jobs:
       # Signing is opt-in: it only runs once the Developer ID certificate and
       # notarization secrets exist. See RELEASING.md.
       HAS_SIGNING_CERT: ${{ secrets.MACOS_CERTIFICATE_BASE64 != '' }}
-      SIGNING_KEYCHAIN: ${{ runner.temp }}/signing.keychain-db
     steps:
       - name: Checkout repository at tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -293,16 +292,17 @@ jobs:
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
           keychain_password="$(openssl rand -hex 24)"
-          security create-keychain -p "$keychain_password" "$SIGNING_KEYCHAIN"
-          security set-keychain-settings -lut 21600 "$SIGNING_KEYCHAIN"
-          security unlock-keychain -p "$keychain_password" "$SIGNING_KEYCHAIN"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
           echo "$MACOS_CERTIFICATE_BASE64" | base64 -d > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" -k "$SIGNING_KEYCHAIN" \
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" \
             -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k "$keychain_password" "$SIGNING_KEYCHAIN" >/dev/null
-          security list-keychains -d user -s "$SIGNING_KEYCHAIN" \
+            -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" \
             $(security list-keychains -d user | tr -d '"')
           rm -f "$RUNNER_TEMP/certificate.p12"
 
@@ -310,7 +310,7 @@ jobs:
           # imported Developer ID Application certificate.
           identity="${MACOS_SIGNING_IDENTITY:-}"
           if [ -z "$identity" ]; then
-            identity=$(security find-identity -v -p codesigning "$SIGNING_KEYCHAIN" \
+            identity=$(security find-identity -v -p codesigning "$keychain" \
               | sed -n 's/.*"\(.*\)"/\1/p' | grep -m1 '^Developer ID Application' || true)
           fi
           if [ -z "$identity" ]; then
@@ -394,8 +394,9 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          if [ -f "$SIGNING_KEYCHAIN" ]; then
-            security delete-keychain "$SIGNING_KEYCHAIN"
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          if [ -f "$keychain" ]; then
+            security delete-keychain "$keychain"
           fi
           rm -f "$RUNNER_TEMP/certificate.p12"
 
