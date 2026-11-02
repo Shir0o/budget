@@ -1,0 +1,318 @@
+name: Release
+
+# Triggered by pushing a version tag, e.g.:
+#   git tag v1.0.0 && git push origin v1.0.0
+#
+# Android: signs the AAB with the CI upload key, attaches the AAB + APK to the
+# GitHub Release, and uploads the AAB to the Play Console **internal testing**
+# track as a live release (`release_status: completed`, i.e. NOT a draft), so
+# internal testers get it as soon as the upload finishes.
+# macOS: builds the app and attaches `budget-macos.dmg` + `budget-macos.zip` to
+# the GitHub Release.
+#
+# See RELEASING.md for the one-time secret and Play Console setup.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  github-release:
+    name: Create the GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.name }}
+      version_code: ${{ steps.version.outputs.code }}
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Checkout repository at tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Derive version name and Android versionCode from tag
+        id: version
+        run: |
+          set -euo pipefail
+          tag="$TAG"
+          version="${tag#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$tag' is not a plain semantic version (expected vMAJOR.MINOR.PATCH)."
+            exit 1
+          fi
+          IFS='.' read -r major minor patch <<< "$version"
+          code=$(( 10#$major * 10000 + 10#$minor * 100 + 10#$patch ))
+          echo "name=$version" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Release $tag: versionName=$version versionCode=$code"
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+
+  android:
+    name: Build and publish to Play internal testing
+    needs: github-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TAG: ${{ github.ref_name }}
+      VERSION_NAME: ${{ needs.github-release.outputs.version }}
+      VERSION_CODE: ${{ needs.github-release.outputs.version_code }}
+    steps:
+      - name: Checkout repository at tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify all release secrets are present
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          PLAY_SUPPLY_JSON_KEY: ${{ secrets.PLAY_SUPPLY_JSON_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for var in ANDROID_KEYSTORE_BASE64 KEY_ALIAS KEY_PASSWORD STORE_PASSWORD PLAY_SUPPLY_JSON_KEY; do
+            if [ -z "${!var:-}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing required GitHub secrets: ${missing[*]}"
+            echo "::error::See RELEASING.md for setup instructions."
+            exit 1
+          fi
+          echo "All release secrets present."
+
+      - name: Setup Java
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Setup Ruby + Bundler for fastlane
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: false
+
+      - name: Install Ruby dependencies
+        run: bundle install
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Assemble CI keystore and key.properties
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.keystores
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > ~/.keystores/upload-key.keystore
+          chmod 600 ~/.keystores/upload-key.keystore
+          cat > app/android/key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=$HOME/.keystores/upload-key.keystore
+          EOF
+          chmod 600 app/android/key.properties
+          echo "CI keystore and key.properties assembled (file contents not echoed)."
+
+      - name: Build signed release AAB
+        working-directory: app
+        run: flutter build appbundle --release --no-tree-shake-icons --build-name="$VERSION_NAME" --build-number="$VERSION_CODE"
+
+      - name: Build signed release APK
+        working-directory: app
+        run: flutter build apk --release --no-tree-shake-icons --build-name="$VERSION_NAME" --build-number="$VERSION_CODE"
+
+      - name: Locate built artifacts
+        id: locate
+        run: |
+          set -euo pipefail
+          AAB=$(find app/build/app/outputs/bundle/release -name '*.aab' | head -n1)
+          APK=$(find app/build/app/outputs/flutter-apk -name 'app-release.apk' | head -n1)
+          if [ -z "$AAB" ] || [ -z "$APK" ]; then
+            echo "::error::Built artifacts not found. Expected AAB and APK under app/build/app/outputs/."
+            exit 1
+          fi
+          echo "aab=$AAB" >> "$GITHUB_OUTPUT"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          echo "Located AAB=$AAB and APK=$APK"
+
+      - name: Attach AAB and APK to the GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            ${{ steps.locate.outputs.aab }}
+            ${{ steps.locate.outputs.apk }}
+
+      - name: Extract Play Store release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          mkdir -p fastlane/metadata/android/en-US/changelogs
+          CHANGELOG_DEST="fastlane/metadata/android/en-US/changelogs/${VERSION_CODE}.txt"
+
+          ruby -e '# encoding: utf-8
+            changelog = File.exist?("CHANGELOG.md") ? File.read("CHANGELOG.md", encoding: "utf-8") : ""
+            ver = (ENV["TAG"] || "").sub(/^v/, "")
+
+            pattern = /^##\s+\[?v?#{Regexp.escape(ver)}\]?[^\n]*\n(.*?)(?=^##\s+\[?v?[0-9]|\Z)/m
+            match = changelog.match(pattern)
+            body = match ? match[1].strip : ""
+
+            cleaned = body.gsub(/\s*\(\[[^\]]+\]\([^)]+\)\)/, "")
+            cleaned = cleaned.gsub(/\[([^\]]+)\]\([^)]+\)/, "\\1")
+            cleaned = cleaned.gsub(/^###?\s+(.+)$/, "\\1:")
+            cleaned = cleaned.lines.map { |line|
+              l = line.strip
+              if l =~ /^[\*\-]\s+(.*)$/
+                item = $1.gsub(/\*\*([^*]+)\*\*/, "\\1").gsub(/\*([^*]+)\*/, "\\1").strip
+                "\u2022 #{item}"
+              elsif l.empty?
+                ""
+              else
+                l.gsub(/\*\*([^*]+)\*\*/, "\\1").gsub(/\*([^*]+)\*/, "\\1")
+              end
+            }.join("\n").gsub(/\n{3,}/, "\n\n").strip
+
+            cleaned = cleaned[0...497] + "..." if cleaned.length > 500
+            cleaned = "Bug fixes and improvements." if cleaned.empty?
+
+            File.write(ARGV[0], cleaned)
+            puts "Release notes for #{ARGV[0]} (#{cleaned.length} chars):"
+            puts cleaned
+          ' "$CHANGELOG_DEST"
+
+      - name: Upload AAB to Play Console internal testing (live, not a draft)
+        env:
+          PLAY_SUPPLY_JSON_KEY: ${{ secrets.PLAY_SUPPLY_JSON_KEY }}
+        run: |
+          set -euo pipefail
+          echo "$PLAY_SUPPLY_JSON_KEY" > fastlane/play-supply-credentials.json
+          chmod 600 fastlane/play-supply-credentials.json
+          bundle exec fastlane play_upload
+          rm -f fastlane/play-supply-credentials.json
+          echo "Added $VERSION_NAME ($VERSION_CODE) to Google Play internal testing (completed, not a draft)."
+
+      - name: Remove mounted credentials
+        if: always()
+        continue-on-error: true
+        run: |
+          rm -f fastlane/play-supply-credentials.json
+          rm -f app/android/key.properties
+          rm -rf "$HOME/.keystores"
+
+  macos:
+    name: Build and attach the macOS release
+    needs: github-release
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      TAG: ${{ github.ref_name }}
+      VERSION_NAME: ${{ needs.github-release.outputs.version }}
+      VERSION_CODE: ${{ needs.github-release.outputs.version_code }}
+    steps:
+      - name: Checkout repository at tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release macOS app
+        working-directory: app
+        run: flutter build macos --release --no-tree-shake-icons --build-name="$VERSION_NAME" --build-number="$VERSION_CODE"
+
+      - name: Package macOS artifacts (DMG and ZIP)
+        run: |
+          set -euo pipefail
+          app_path="app/build/macos/Build/Products/Release/Budget.app"
+          if [ ! -d "$app_path" ]; then
+            echo "::error::macOS app bundle not found at $app_path"
+            exit 1
+          fi
+          mkdir -p dmg_staging
+          cp -R "$app_path" dmg_staging/
+          ln -s /Applications dmg_staging/Applications
+          hdiutil create -volname "Budget" -srcfolder dmg_staging -ov -format UDZO "budget-macos.dmg"
+          rm -rf dmg_staging
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "budget-macos.zip"
+          echo "Packaged budget-macos.dmg and budget-macos.zip."
+
+      - name: Attach macOS artifacts to the GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            budget-macos.dmg
+            budget-macos.zip
+
+  release-summary:
+    name: Release summary
+    needs: [github-release, android, macos]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Summarise the release
+        run: |
+          set -euo pipefail
+          {
+            echo "### Release ${{ github.ref_name }}"
+            if [ "${{ needs.android.result }}" = "success" ]; then
+              echo "- ✅ Added to Google Play internal testing (completed — live to testers, not a draft)."
+            else
+              echo "- ❌ Google Play internal testing upload did not happen (\`${{ needs.android.result }}\`). See RELEASING.md for the required secrets and Play Console setup."
+            fi
+            if [ "${{ needs.macos.result }}" = "success" ]; then
+              echo "- ✅ macOS \`budget-macos.dmg\` and \`budget-macos.zip\` attached to the GitHub Release."
+            else
+              echo "- ❌ macOS release did not run (\`${{ needs.macos.result }}\`)."
+            fi
+            echo ""
+            echo "Release page: [${{ github.ref_name }}](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail unless both platforms shipped
+        if: needs.github-release.result != 'success' || needs.android.result != 'success' || needs.macos.result != 'success'
+        run: |
+          echo "::error::Release did not complete on every platform."
+          exit 1

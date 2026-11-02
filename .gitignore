@@ -9,3 +9,7 @@ private/
 .dart_tool/
 build/
 coverage/
+
+# Release credentials (see RELEASING.md)
+fastlane/play-supply-credentials.json
+Gemfile.lock
