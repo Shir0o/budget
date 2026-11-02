@@ -241,6 +241,10 @@ jobs:
       TAG: ${{ github.ref_name }}
       VERSION_NAME: ${{ needs.github-release.outputs.version }}
       VERSION_CODE: ${{ needs.github-release.outputs.version_code }}
+      # Signing is opt-in: it only runs once the Developer ID certificate and
+      # notarization secrets exist. See RELEASING.md.
+      HAS_SIGNING_CERT: ${{ secrets.MACOS_CERTIFICATE_BASE64 != '' }}
+      SIGNING_KEYCHAIN: ${{ runner.temp }}/signing.keychain-db
     steps:
       - name: Checkout repository at tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -260,6 +264,93 @@ jobs:
         working-directory: app
         run: flutter build macos --release --no-tree-shake-icons --build-name="$VERSION_NAME" --build-number="$VERSION_CODE"
 
+      - name: Verify macOS signing secrets
+        if: env.HAS_SIGNING_CERT == 'true'
+        env:
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for var in MACOS_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!var:-}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::MACOS_CERTIFICATE_BASE64 is set but these are missing: ${missing[*]}"
+            exit 1
+          fi
+          echo "All macOS signing secrets present."
+
+      - name: Import the Developer ID signing certificate
+        if: env.HAS_SIGNING_CERT == 'true'
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          keychain_password="$(openssl rand -hex 24)"
+          security create-keychain -p "$keychain_password" "$SIGNING_KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$SIGNING_KEYCHAIN"
+          security unlock-keychain -p "$keychain_password" "$SIGNING_KEYCHAIN"
+          echo "$MACOS_CERTIFICATE_BASE64" | base64 -d > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$SIGNING_KEYCHAIN" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$keychain_password" "$SIGNING_KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$SIGNING_KEYCHAIN" \
+            $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/certificate.p12"
+
+          # Prefer the exact identity if one was configured; otherwise pick the
+          # imported Developer ID Application certificate.
+          identity="${MACOS_SIGNING_IDENTITY:-}"
+          if [ -z "$identity" ]; then
+            identity=$(security find-identity -v -p codesigning "$SIGNING_KEYCHAIN" \
+              | sed -n 's/.*"\(.*\)"/\1/p' | grep -m1 '^Developer ID Application' || true)
+          fi
+          if [ -z "$identity" ]; then
+            echo "::error::No valid 'Developer ID Application' identity in the imported certificate."
+            exit 1
+          fi
+          echo "MACOS_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "Imported signing identity: $identity"
+
+      - name: Sign the app with the Developer ID certificate
+        if: env.HAS_SIGNING_CERT == 'true'
+        run: |
+          set -euo pipefail
+          app_path="app/build/macos/Build/Products/Release/Budget.app"
+          # Re-sign the whole bundle with the hardened runtime (required by the
+          # notary service) and the release entitlements (which, unlike the
+          # ad-hoc build, do not carry get-task-allow). Nested frameworks and
+          # dylibs are signed by --deep, then the outer bundle.
+          codesign --force --deep --options runtime --timestamp \
+            --entitlements app/macos/Runner/Release.entitlements \
+            --sign "$MACOS_IDENTITY" "$app_path"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          spctl --assess --type execute --verbose=2 "$app_path" || true
+
+      - name: Notarize and staple the app
+        if: env.HAS_SIGNING_CERT == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          app_path="app/build/macos/Build/Products/Release/Budget.app"
+          ditto -c -k --keepParent "$app_path" "$RUNNER_TEMP/Budget-notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/Budget-notarize.zip" \
+            --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$app_path"
+          rm -f "$RUNNER_TEMP/Budget-notarize.zip"
+
       - name: Package macOS artifacts (DMG and ZIP)
         run: |
           set -euo pipefail
@@ -276,6 +367,20 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$app_path" "budget-macos.zip"
           echo "Packaged budget-macos.dmg and budget-macos.zip."
 
+      - name: Notarize and staple the DMG
+        if: env.HAS_SIGNING_CERT == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit "budget-macos.dmg" \
+            --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "budget-macos.dmg"
+          xcrun stapler validate "budget-macos.dmg"
+
       - name: Attach macOS artifacts to the GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
@@ -284,6 +389,15 @@ jobs:
           files: |
             budget-macos.dmg
             budget-macos.zip
+
+      - name: Remove the signing keychain
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -f "$SIGNING_KEYCHAIN" ]; then
+            security delete-keychain "$SIGNING_KEYCHAIN"
+          fi
+          rm -f "$RUNNER_TEMP/certificate.p12"
 
   release-summary:
     name: Release summary

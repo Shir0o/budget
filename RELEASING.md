@@ -93,13 +93,70 @@ release for this app directly.
   `edits.tracks.get` for `internal`.
 - **The run summary** of the Release workflow repeats both results.
 
+## macOS signing
+
+- **macOS is ad-hoc signed by default.** Without Apple secrets the DMG still ships and runs, but
+  Gatekeeper asks the user to right-click → Open on first launch. Add the Developer ID secrets
+  below to sign and notarize automatically. Ticket 15 planned a notarized DMG; this is that step.
+
+### Signing and notarizing the macOS build
+
+You need a paid **Apple Developer Program** membership. The certificate must be **Developer ID
+Application** — the "Apple Development" and "Apple Distribution" certificates in your keychain are
+for development and the Mac App Store, not for a DMG downloaded from GitHub.
+
+1. **Create the certificate.** Xcode → Settings → Accounts → select the team → **Manage
+   Certificates…** → **+** → **Developer ID Application**. (Or developer.apple.com → Certificates →
+   **+** → Developer ID Application.)
+2. **Export it.** Keychain Access → **My Certificates** → right-click *Developer ID Application:
+   Your Name (TEAMID)* → **Export…** → save as `DeveloperID.p12` with a password. The export must
+   include the private key; export the certificate *and* key, not just the certificate.
+3. **Make an app-specific password.** appleid.apple.com → Sign-In and Security → **App-Specific
+   Passwords** → create one named `budget-ci`.
+4. **Note the Team ID.** developer.apple.com → Membership details → *Team ID* (10 characters).
+5. **Add the secrets** (Settings → Secrets and variables → Actions):
+
+   ```bash
+   base64 -i DeveloperID.p12 | tr -d '\n' | \
+     gh secret set MACOS_CERTIFICATE_BASE64 --repo Shir0o/budget
+   gh secret set MACOS_CERTIFICATE_PASSWORD --repo Shir0o/budget --body "<p12 password>"
+   gh secret set APPLE_ID --repo Shir0o/budget --body "<your Apple ID email>"
+   gh secret set APPLE_APP_PASSWORD --repo Shir0o/budget --body "<app-specific password>"
+   gh secret set APPLE_TEAM_ID --repo Shir0o/budget --body "<10-character team id>"
+   ```
+
+   `MACOS_SIGNING_IDENTITY` is optional; set it only if you need to pin an exact identity string
+   (for example when the certificate is not the only one that matches).
+
+6. **Push a tag.** The macOS job then:
+
+   - imports the `.p12` into a throwaway keychain (`security import`, partition list set for
+     `codesign`),
+   - re-signs `Budget.app` with the Developer ID identity, the hardened runtime
+     (`--options runtime`) and `app/macos/Runner/Release.entitlements` — this also drops the
+     `get-task-allow` entitlement that ad-hoc signing leaves behind,
+   - notarizes the app with `xcrun notarytool submit --wait` and staples the ticket,
+   - builds the DMG and ZIP (both contain the stapled app),
+   - notarizes and staples the DMG,
+   - deletes the keychain, and only then uploads the assets.
+
+   If `MACOS_CERTIFICATE_BASE64` is unset, none of this runs and the release keeps shipping the
+   ad-hoc build, exactly as before.
+
+Notarization needs Apple's service, so the macOS job takes roughly 5–15 minutes longer.
+
+### Checking the signature yourself
+
+```bash
+hdiutil attach budget-macos.dmg
+codesign -dvvv /Volumes/Budget/Budget.app   # expect Authority=Developer ID Application: … and flags=…(runtime)
+spctl --assess --type execute -vv /Volumes/Budget/Budget.app   # expect "accepted, Notarized Developer ID"
+xcrun stapler validate /Volumes/Budget/Budget.app
+xcrun stapler validate budget-macos.dmg
+```
+
 ## Notes and limitations
 
-- **macOS builds are ad-hoc signed.** No Developer ID certificate or notarization is
-  configured, so Gatekeeper asks the user to right-click → Open on first launch. The app runs
-  normally when launched that way (or with `open Budget.app`). Ticket 15 planned a notarized
-  DMG; adding `MACOS_CERTIFICATE_*` / `NOTARY_*` secrets and an `xcrun notarytool` step is the
-  follow-up.
 - **No release-please yet.** Version bumps and tags are manual (step 2). Ticket 16 planned
   release-please with Conventional Commits; it needs a `RELEASE_PLEASE_TOKEN` PAT because tags
   pushed with `GITHUB_TOKEN` do not trigger `release.yml`. The secret now exists, so wiring up
