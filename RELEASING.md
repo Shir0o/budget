@@ -40,7 +40,7 @@ same tag always produces the same `versionCode`.
 
 ## Required GitHub secrets
 
-Under **Settings → Secrets and variables → Actions**:
+Already configured for this repo. Under **Settings → Secrets and variables → Actions**:
 
 | Secret                    | Purpose                                                              |
 | ------------------------- | -------------------------------------------------------------------- |
@@ -67,18 +67,21 @@ gh secret set PLAY_SUPPLY_JSON_KEY --repo Shir0o/budget < ~/release-please-suppl
 
 ## One-time Play Console setup
 
-The Play Developer API cannot create an app, and it rejects uploads for a package that has
-never been published. So, once, by hand:
+The Play Developer API cannot create an app, so this part is manual. It is **already done** for
+this repo: the app `io.github.shir0o.budget` exists, the service account in
+`PLAY_SUPPLY_JSON_KEY` is linked with Release Manager, and v1.0.0 (versionCode 10000) is on the
+internal track with status `completed`.
+
+For a new app, once, by hand:
 
 1. **Create the app** in the Play Console with package name `io.github.shir0o.budget`.
-2. **Upload an AAB once by hand** (Internal testing → Create new release) so the package
-   exists. Let **Play App Signing** handle the app-signing key (default).
+2. Let **Play App Signing** handle the app-signing key (default).
 3. **Settings → API access** → link the service account named in
    `PLAY_SUPPLY_JSON_KEY` and grant it **Release Manager** for this app.
-4. Add at least one internal tester and publish the internal track once, so testers have a
-   join link.
+4. Add at least one internal tester, so they have a join link.
 
-After that, every tag publishes a completed internal-testing release automatically.
+The CI upload does not need a hand-made first release: it created the first internal-testing
+release for this app directly.
 
 ## Verifying a release
 
@@ -92,15 +95,23 @@ After that, every tag publishes a completed internal-testing release automatical
 
 ## Notes and limitations
 
-- **macOS builds are unsigned.** No Apple Developer ID certificate or notarization secrets are
-  configured, so Gatekeeper will ask the user to right-click → Open on first launch. Ticket 15
-  planned a notarized DMG; adding `MACOS_CERTIFICATE_*` / `NOTARY_*` secrets and an
-  `xcrun notarytool` step is the follow-up.
+- **macOS builds are ad-hoc signed.** No Developer ID certificate or notarization is
+  configured, so Gatekeeper asks the user to right-click → Open on first launch. The app runs
+  normally when launched that way (or with `open Budget.app`). Ticket 15 planned a notarized
+  DMG; adding `MACOS_CERTIFICATE_*` / `NOTARY_*` secrets and an `xcrun notarytool` step is the
+  follow-up.
 - **No release-please yet.** Version bumps and tags are manual (step 2). Ticket 16 planned
   release-please with Conventional Commits; it needs a `RELEASE_PLEASE_TOKEN` PAT because tags
-  pushed with `GITHUB_TOKEN` do not trigger `release.yml`. Until then, a tag push is the whole
-  release trigger.
+  pushed with `GITHUB_TOKEN` do not trigger `release.yml`. The secret now exists, so wiring up
+  `.github/workflows/release-please.yml` is a small follow-up. Until then, a tag push is the
+  whole release trigger.
 - **Tags are data.** The tag reaches shell steps through `TAG`/`VERSION_*` environment
   variables and is validated as `vMAJOR.MINOR.PATCH` before it is used.
 - **Pre-release tags** (`-rc`, `-beta`) are not special-cased yet; don't tag them until the
   workflow learns to skip the Play upload.
+
+## Release history
+
+| Tag      | Published  | Android                                   | macOS                            |
+| -------- | ---------- | ----------------------------------------- | -------------------------------- |
+| `v1.0.0` | 2026-11-02 | versionCode 10000, Play internal `completed` | `budget-macos.dmg` + `.zip`      |
