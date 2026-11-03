@@ -270,14 +270,32 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
           missing=()
-          for var in MACOS_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID; do
-            if [ -z "${!var:-}" ]; then
-              missing+=("$var")
-            fi
-          done
+          if [ -z "${MACOS_CERTIFICATE_PASSWORD:-}" ]; then
+            missing+=("MACOS_CERTIFICATE_PASSWORD")
+          fi
+          # Notarization accepts either an App Store Connect API key or an
+          # Apple ID with an app-specific password.
+          if [ -n "${NOTARY_KEY_ID:-}" ]; then
+            for var in NOTARY_KEY_P8 NOTARY_ISSUER_ID; do
+              if [ -z "${!var:-}" ]; then
+                missing+=("$var")
+              fi
+            done
+            echo "Notarization auth: App Store Connect API key."
+          else
+            for var in APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID; do
+              if [ -z "${!var:-}" ]; then
+                missing+=("$var")
+              fi
+            done
+            echo "Notarization auth: Apple ID + app-specific password."
+          fi
           if [ ${#missing[@]} -ne 0 ]; then
             echo "::error::MACOS_CERTIFICATE_BASE64 is set but these are missing: ${missing[*]}"
             exit 1
@@ -341,15 +359,22 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
           app_path="app/build/macos/Build/Products/Release/Budget.app"
+          if [ -n "${NOTARY_KEY_ID:-}" ]; then
+            printf '%s\n' "$NOTARY_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+            notary_auth=(--key "$RUNNER_TEMP/AuthKey.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID")
+          else
+            notary_auth=(--apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID")
+          fi
           ditto -c -k --keepParent "$app_path" "$RUNNER_TEMP/Budget-notarize.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/Budget-notarize.zip" \
-            --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" --wait
+          xcrun notarytool submit "$RUNNER_TEMP/Budget-notarize.zip" "${notary_auth[@]}" --wait
           xcrun stapler staple "$app_path"
-          rm -f "$RUNNER_TEMP/Budget-notarize.zip"
+          rm -f "$RUNNER_TEMP/Budget-notarize.zip" "$RUNNER_TEMP/AuthKey.p8"
 
       - name: Package macOS artifacts (DMG and ZIP)
         run: |
@@ -373,13 +398,21 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
-          xcrun notarytool submit "budget-macos.dmg" \
-            --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" --wait
+          if [ -n "${NOTARY_KEY_ID:-}" ]; then
+            printf '%s\n' "$NOTARY_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+            notary_auth=(--key "$RUNNER_TEMP/AuthKey.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID")
+          else
+            notary_auth=(--apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID")
+          fi
+          xcrun notarytool submit "budget-macos.dmg" "${notary_auth[@]}" --wait
           xcrun stapler staple "budget-macos.dmg"
           xcrun stapler validate "budget-macos.dmg"
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
 
       - name: Attach macOS artifacts to the GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
@@ -399,6 +432,7 @@ jobs:
             security delete-keychain "$keychain"
           fi
           rm -f "$RUNNER_TEMP/certificate.p12"
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
 
   release-summary:
     name: Release summary

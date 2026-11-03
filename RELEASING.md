@@ -50,6 +50,9 @@ Already configured for this repo. Under **Settings → Secrets and variables →
 | `STORE_PASSWORD`          | Password for the keystore file itself.                                |
 | `PLAY_SUPPLY_JSON_KEY`    | Play Console service-account JSON (`~/release-please-supply-key.json`). |
 
+The macOS signing secrets (`MACOS_CERTIFICATE_BASE64`, the notarization credentials) are optional
+and documented under [macOS signing](#macos-signing).
+
 The workflow fails fast, naming the missing secrets, if any are absent. It never prints their
 values, and deletes every mounted credential file under `if: always()`.
 
@@ -105,43 +108,100 @@ You need a paid **Apple Developer Program** membership. The certificate must be 
 Application** — the "Apple Development" and "Apple Distribution" certificates in your keychain are
 for development and the Mac App Store, not for a DMG downloaded from GitHub.
 
-1. **Create the certificate.** Xcode → Settings → Accounts → select the team → **Manage
-   Certificates…** → **+** → **Developer ID Application**. (Or developer.apple.com → Certificates →
-   **+** → Developer ID Application.)
-2. **Export it.** Keychain Access → **My Certificates** → right-click *Developer ID Application:
-   Your Name (TEAMID)* → **Export…** → save as `DeveloperID.p12` with a password. The export must
-   include the private key; export the certificate *and* key, not just the certificate.
-3. **Make an app-specific password.** appleid.apple.com → Sign-In and Security → **App-Specific
-   Passwords** → create one named `budget-ci`.
-4. **Note the Team ID.** developer.apple.com → Membership details → *Team ID* (10 characters).
-5. **Add the secrets** (Settings → Secrets and variables → Actions):
+There are two websites involved and it matters which one:
+
+- **developer.apple.com/account** — certificates. *App Store Connect has no certificate page.*
+- **appstoreconnect.apple.com** — the notarization API key (optional auth route).
+
+#### 1. Create the Developer ID Application certificate
+
+Either Xcode (fastest):
+
+1. Xcode → Settings → Accounts → select the team → **Manage Certificates…** → **+** →
+   **Developer ID Application**.
+
+Or the developer website (if you are not using Xcode for this):
+
+1. Keychain Access → menu **Keychain Access** → **Certificate Assistant** → **Request a
+   Certificate From a Certificate Authority…** → *Saved to disk* → save `CertificateSigningRequest.certSigningRequest`.
+   This creates the private key in your login keychain; the certificate must be created from **this
+   Mac** or the private key will not match.
+2. developer.apple.com/account → **Certificates, Identifiers & Profiles** → **Certificates** →
+   **+** → **Developer ID Application** → choose the **Account Holder / Admin** team → upload the
+   CSR → **Continue** → **Download**.
+3. Double-click the downloaded `.cer` to install it into your login keychain. It pairs with the
+   private key from step 1.
+4. Check it is there:
 
    ```bash
-   base64 -i DeveloperID.p12 | tr -d '\n' | \
-     gh secret set MACOS_CERTIFICATE_BASE64 --repo Shir0o/budget
-   gh secret set MACOS_CERTIFICATE_PASSWORD --repo Shir0o/budget --body "<p12 password>"
+   security find-identity -v -p codesigning | grep "Developer ID Application"
+   ```
+
+5. **Export it.** Keychain Access → **My Certificates** → right-click *Developer ID Application:
+   Your Name (TEAMID)* → **Export…** → save as `DeveloperID.p12` with a password. The export must
+   include the private key; if the disclosure triangle does not show a private key under the
+   certificate, the CSR came from another Mac.
+
+#### 2. Pick a notarization credential
+
+**Route A — App Store Connect API key (recommended for CI).**
+
+1. appstoreconnect.apple.com → **Users and Access** → **Integrations** (older accounts: **Keys**) →
+   **App Store Connect API** → **Team Keys**.
+2. Note the **Issuer ID** shown above the key list.
+3. **+** → name it `budget-notary`, role **Developer** (Admin also works) → **Generate**.
+4. **Download the `.p8` immediately** — Apple lets you download it exactly once. Note its **Key ID**.
+5. Secrets:
+
+   ```bash
+   gh secret set NOTARY_KEY_P8 --repo Shir0o/budget < AuthKey_XXXXXXXXXX.p8
+   gh secret set NOTARY_KEY_ID --repo Shir0o/budget --body "<10-character key id>"
+   gh secret set NOTARY_ISSUER_ID --repo Shir0o/budget --body "<issuer uuid>"
+   ```
+
+**Route B — Apple ID + app-specific password.**
+
+1. appleid.apple.com → Sign-In and Security → **App-Specific Passwords** → create one named
+   `budget-ci`.
+2. developer.apple.com/account → **Membership details** → *Team ID* (10 characters).
+3. Secrets:
+
+   ```bash
    gh secret set APPLE_ID --repo Shir0o/budget --body "<your Apple ID email>"
    gh secret set APPLE_APP_PASSWORD --repo Shir0o/budget --body "<app-specific password>"
    gh secret set APPLE_TEAM_ID --repo Shir0o/budget --body "<10-character team id>"
    ```
 
-   `MACOS_SIGNING_IDENTITY` is optional; set it only if you need to pin an exact identity string
-   (for example when the certificate is not the only one that matches).
+If both routes are configured, **Route A wins** (`NOTARY_KEY_ID` takes precedence). The workflow
+fails fast and names any missing secret for whichever route you chose.
 
-6. **Push a tag.** The macOS job then:
+#### 3. Add the certificate secrets
 
-   - imports the `.p12` into a throwaway keychain (`security import`, partition list set for
-     `codesign`),
-   - re-signs `Budget.app` with the Developer ID identity, the hardened runtime
-     (`--options runtime`) and `app/macos/Runner/Release.entitlements` — this also drops the
-     `get-task-allow` entitlement that ad-hoc signing leaves behind,
-   - notarizes the app with `xcrun notarytool submit --wait` and staples the ticket,
-   - builds the DMG and ZIP (both contain the stapled app),
-   - notarizes and staples the DMG,
-   - deletes the keychain, and only then uploads the assets.
+```bash
+base64 -i DeveloperID.p12 | tr -d '\n' | \
+  gh secret set MACOS_CERTIFICATE_BASE64 --repo Shir0o/budget
+gh secret set MACOS_CERTIFICATE_PASSWORD --repo Shir0o/budget --body "<p12 password>"
+```
 
-   If `MACOS_CERTIFICATE_BASE64` is unset, none of this runs and the release keeps shipping the
-   ad-hoc build, exactly as before.
+`MACOS_SIGNING_IDENTITY` is optional; set it only if you need to pin an exact identity string
+(for example when the certificate is not the only one that matches).
+
+#### 4. Push a tag
+
+The macOS job then:
+
+- imports the `.p12` into a throwaway keychain (`security import`, partition list set for
+  `codesign`),
+- re-signs `Budget.app` with the Developer ID identity, the hardened runtime
+  (`--options runtime`) and `app/macos/Runner/Release.entitlements` — this also drops the
+  `get-task-allow` entitlement that ad-hoc signing leaves behind,
+- notarizes the app with `xcrun notarytool submit --wait` and staples the ticket,
+- builds the DMG and ZIP (both contain the stapled app),
+- notarizes and staples the DMG,
+- deletes the keychain and the temporary `.p8`, and only then uploads the assets.
+
+If `MACOS_CERTIFICATE_BASE64` is unset, none of this runs and the release keeps shipping the
+ad-hoc build, exactly as before.
 
 Notarization needs Apple's service, so the macOS job takes roughly 5–15 minutes longer.
 
