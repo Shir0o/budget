@@ -7,7 +7,7 @@ environment:
   sdk: ^3.13.0
 
 dependencies:
-  archive: ^4.0.0
+  archive: ^4.6.0
   budget_core: any
   sqlite3: ^3.8.0
 
