@@ -17,6 +17,15 @@ import 'services.dart';
 // The real services: secure storage, the system file dialog and
 // local_auth. Only `main.dart` uses these; tests use the in-memory ones.
 
+/// The Keychain for keys and the device id. The data protection keychain
+/// needs a `keychain-access-groups` entitlement, which ad-hoc and Developer
+/// ID builds do not carry, so every write fails with -34018 and the app dies
+/// before its first frame. The login keychain needs no entitlement and the
+/// bundled `budget-mcp` can read the same items (ticket 13).
+const deviceSecureStorage = FlutterSecureStorage(
+  mOptions: MacOsOptions(usesDataProtectionKeychain: false),
+);
+
 /// WorkManager's names for the 6-hourly bank fetch (ticket 10).
 const bankSyncTask = 'budget.bankSync';
 const bankSyncUniqueName = 'budget.bankSync.periodic';

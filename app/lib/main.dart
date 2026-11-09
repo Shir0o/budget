@@ -31,7 +31,7 @@ Future<void> main() async {
   });
 
   // Keys and the device id live only in Android Keystore-backed storage.
-  const secrets = FlutterSecureStorage();
+  const secrets = deviceSecureStorage;
   final deviceId = await _readOrCreate(secrets, 'device-id', newId);
 
   final dir = await getApplicationSupportDirectory();

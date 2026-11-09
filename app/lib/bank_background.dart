@@ -1,7 +1,6 @@
 import 'package:budget_core/budget_core.dart';
 import 'package:budget_simplefin/budget_simplefin.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:workmanager/workmanager.dart';
 
@@ -25,7 +24,7 @@ void bankSyncDispatcher() {
 /// link all allow it.
 Future<bool> runBackgroundBankFetch() async {
   WidgetsFlutterBinding.ensureInitialized();
-  const secrets = FlutterSecureStorage();
+  const secrets = deviceSecureStorage;
   final prefs = SecureDevicePrefs(secrets);
   final book = await prefs.readSimpleFinBook();
   final budgetId = await prefs.readLastBudgetId();
