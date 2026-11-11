@@ -1,12 +1,10 @@
 name: budget
-description: "Private, local-first, zero-based budget."
-publish_to: 'none'
-version: 1.0.2+1
+description: Private, local-first, zero-based budget.
+publish_to: none
+version: 1.0.3
 resolution: workspace
-
 environment:
   sdk: ^3.13.0
-
 dependencies:
   flutter:
     sdk: flutter
@@ -22,18 +20,14 @@ dependencies:
   file_picker: ^13.3.0
   qr_flutter: ^4.1.0
   workmanager: ^0.10.10
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
   archive: ^4.6.0
   sqlite3: ^3.8.0
-
 flutter:
   uses-material-design: true
-
-  # Fonts are bundled. Nothing is fetched at runtime.
   assets:
     - assets/fonts/OFL.txt
   fonts:
