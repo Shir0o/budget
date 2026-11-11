@@ -283,36 +283,50 @@ class _NavTab extends StatelessWidget {
               ),
               if (badge > 0)
                 Positioned(
-                  right: 4,
-                  top: -4,
+                  right: 6,
+                  top: -2,
                   child: Container(
                     key: ValueKey('$label-badge'),
-                    constraints: const BoxConstraints(minWidth: 18),
-                    height: 18,
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
                     padding: const EdgeInsets.symmetric(horizontal: 5),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: Palette.problemText,
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: Text(
-                      '$badge',
-                      style: amountStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                    // The pill grows with the text scale, so the count has to
+                    // shrink to stay inside it rather than be clipped.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        '$badge',
+                        style: amountStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
                 ),
             ],
           ),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              color: selected ? Palette.ink : Palette.muted,
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: selected ? Palette.ink : Palette.muted,
+                ),
+              ),
             ),
           ),
         ],
@@ -336,6 +350,9 @@ class MonthSwitcher extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const size = BoxConstraints.tightFor(width: 44, height: 44);
+    // The label grows with the text, so a scaled-up month stays on one line.
+    final labelWidth =
+        96 * (MediaQuery.textScalerOf(context).scale(15) / 15).clamp(1.0, 1.7);
     return Row(
       mainAxisSize: MainAxisSize.min,
       spacing: 2,
@@ -347,9 +364,11 @@ class MonthSwitcher extends StatelessWidget {
           icon: const Icon(Icons.chevron_left, color: Palette.muted),
         ),
         SizedBox(
-          width: 96,
+          width: labelWidth,
           child: Text(
             formatMonth(month),
+            maxLines: 1,
+            softWrap: false,
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),

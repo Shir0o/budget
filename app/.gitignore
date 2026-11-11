@@ -33,6 +33,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Rendered golden test artifacts — regenerated, never tracked
+test/goldens/
+
 # Symbolication related
 app.*.symbols
 
