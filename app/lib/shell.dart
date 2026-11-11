@@ -844,20 +844,24 @@ class _SectionRow extends StatelessWidget {
             if (badge > 0)
               Container(
                 key: ValueKey('${section.label}-badge'),
-                constraints: const BoxConstraints(minWidth: 18),
-                height: 18,
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
                 padding: const EdgeInsets.symmetric(horizontal: 5),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: Palette.problemText,
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text(
-                  '$badge',
-                  style: amountStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                // The pill grows with the text scale, so the count has to
+                // shrink to stay inside it rather than be clipped.
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '$badge',
+                    style: amountStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),

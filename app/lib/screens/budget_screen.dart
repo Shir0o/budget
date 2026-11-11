@@ -120,10 +120,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: 14,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Semantics(
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final name = Semantics(
                         button: true,
                         label: 'Switch budget',
                         child: InkWell(
@@ -134,11 +133,15 @@ class _BudgetScreenState extends State<BudgetScreen> {
                               mainAxisSize: MainAxisSize.min,
                               spacing: 6,
                               children: [
-                                Text(
-                                  state.budget?.name ?? '',
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
+                                Flexible(
+                                  child: Text(
+                                    state.budget?.name ?? '',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                                 const Icon(Icons.keyboard_arrow_down, size: 16),
@@ -146,33 +149,59 @@ class _BudgetScreenState extends State<BudgetScreen> {
                             ),
                           ),
                         ),
-                      ),
-                      Row(
-                        children: [
-                          MonthSwitcher(
-                            month: month,
-                            onChanged: (changed) =>
-                                setState(() => _month = changed),
+                      );
+                      final switcher = MonthSwitcher(
+                        month: month,
+                        onChanged: (changed) =>
+                            setState(() => _month = changed),
+                      );
+                      final settings = IconButton(
+                        onPressed: () => _open(
+                          SettingsScreen(
+                            engine: widget.engine,
+                            services: AppServicesScope.of(context),
                           ),
-                          IconButton(
-                            onPressed: () => _open(
-                              SettingsScreen(
-                                engine: widget.engine,
-                                services: AppServicesScope.of(context),
-                              ),
-                            ),
-                            tooltip: 'Settings',
-                            icon: const Icon(Icons.settings_outlined),
-                            color: Palette.ink,
-                            iconSize: 22,
-                            constraints: const BoxConstraints.tightFor(
-                              width: 44,
-                              height: 44,
-                            ),
+                        ),
+                        tooltip: 'Settings',
+                        icon: const Icon(Icons.settings_outlined),
+                        color: Palette.ink,
+                        iconSize: 22,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 44,
+                          height: 44,
+                        ),
+                      );
+                      // A narrow phone, or large text, gives the month its
+                      // own line so nothing is clipped.
+                      final compact =
+                          constraints.maxWidth < 340 ||
+                          MediaQuery.textScalerOf(context).scale(1) > 1.3;
+                      if (!compact) {
+                        return Row(
+                          children: [
+                            Expanded(child: name),
+                            switcher,
+                            settings,
+                          ],
+                        );
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        spacing: 6,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(child: name),
+                              settings,
+                            ],
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: switcher,
                           ),
                         ],
-                      ),
-                    ],
+                      );
+                    },
                   ),
                   ReadyToAssignCard(
                     amount: state.readyToAssign(thisMonth()),
@@ -263,15 +292,36 @@ class _ColumnLabels extends StatelessWidget {
     return const Padding(
       padding: EdgeInsets.fromLTRB(24, 6, 24, 6),
       child: Row(
+        spacing: 8,
         children: [
-          Expanded(child: Text('CATEGORY', style: style)),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('CATEGORY', style: style),
+              ),
+            ),
+          ),
           SizedBox(
             width: _assignedWidth,
-            child: Text('ASSIGNED', style: style, textAlign: TextAlign.right),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('ASSIGNED', style: style),
+              ),
+            ),
           ),
           SizedBox(
             width: _availableWidth,
-            child: Text('AVAILABLE', style: style, textAlign: TextAlign.right),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('AVAILABLE', style: style),
+              ),
+            ),
           ),
         ],
       ),

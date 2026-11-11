@@ -31,29 +31,48 @@ class ReadyToAssignCard extends StatelessWidget {
   final Money? overspending;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-    decoration: BoxDecoration(
-      color: Palette.ink,
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      spacing: 12,
-      children: [
-        Expanded(child: _amount()),
-        FilledButton(
-          onPressed: onAssign,
-          style: FilledButton.styleFrom(
-            backgroundColor: Palette.heroAccent,
-            foregroundColor: Palette.onHeroAccent,
-            minimumSize: const Size(0, 44),
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-          ),
-          child: const Text('Assign'),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      // Large text leaves too little width for the amount beside Assign, so
+      // the button moves below it.
+      final stacked =
+          constraints.maxWidth < 260 ||
+          MediaQuery.textScalerOf(context).scale(1) > 1.3;
+      final button = FilledButton(
+        onPressed: onAssign,
+        style: FilledButton.styleFrom(
+          backgroundColor: Palette.heroAccent,
+          foregroundColor: Palette.onHeroAccent,
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
         ),
-      ],
-    ),
+        child: const Text('Assign'),
+      );
+      return Container(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        decoration: BoxDecoration(
+          color: Palette.ink,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: stacked
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                spacing: 12,
+                children: [
+                  _amount(),
+                  Align(alignment: Alignment.centerRight, child: button),
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                spacing: 12,
+                children: [
+                  Expanded(child: _amount()),
+                  button,
+                ],
+              ),
+      );
+    },
   );
 
   Widget _amount() {
@@ -71,15 +90,20 @@ class ReadyToAssignCard extends StatelessWidget {
             color: Palette.heroLabel,
           ),
         ),
-        Text(
-          amount.formatDollars(),
-          style: amountStyle(
-            fontSize: 34,
-            fontWeight: FontWeight.w600,
-            color: amount.isNegative
-                ? Palette.problemOnDark
-                : Palette.background,
-          ).copyWith(letterSpacing: -0.68),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            amount.formatDollars(),
+            maxLines: 1,
+            style: amountStyle(
+              fontSize: 34,
+              fontWeight: FontWeight.w600,
+              color: amount.isNegative
+                  ? Palette.problemOnDark
+                  : Palette.background,
+            ).copyWith(letterSpacing: -0.68),
+          ),
         ),
         if (amount.isNegative)
           const Text(

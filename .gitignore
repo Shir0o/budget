@@ -10,6 +10,9 @@ private/
 build/
 coverage/
 
+# Rendered golden test artifacts — regenerated, never tracked
+**/test/goldens/
+
 # Release credentials (see RELEASING.md)
 fastlane/play-supply-credentials.json
 Gemfile.lock
