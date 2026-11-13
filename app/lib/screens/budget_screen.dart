@@ -106,6 +106,12 @@ class _BudgetScreenState extends State<BudgetScreen> {
           ],
         ),
     ].where((entry) => entry.$2.isNotEmpty).toList();
+    // Matches the header's own check: the page's 20px side padding, so the
+    // columns tighten exactly when the header stacks the month.
+    final compact = _isCompact(
+      MediaQuery.sizeOf(context).width - 40,
+      MediaQuery.textScalerOf(context).scale(1),
+    );
 
     return Scaffold(
       bottomNavigationBar: MainNav(engine: engine, current: Section.budget),
@@ -173,9 +179,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
                       );
                       // A narrow phone, or large text, gives the month its
                       // own line so nothing is clipped.
-                      final compact =
-                          constraints.maxWidth < 340 ||
-                          MediaQuery.textScalerOf(context).scale(1) > 1.3;
+                      final compact = _isCompact(
+                        constraints.maxWidth,
+                        MediaQuery.textScalerOf(context).scale(1),
+                      );
                       if (!compact) {
                         return Row(
                           children: [
@@ -210,7 +217,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 ],
               ),
             ),
-            const _ColumnLabels(),
+            _ColumnLabels(compact: compact),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
@@ -224,6 +231,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                             state: state,
                             category: category,
                             month: month,
+                            compact: compact,
                             onTap: () => _open(
                               CategoryScreen(
                                 engine: engine,
@@ -276,11 +284,20 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 }
 
+/// A narrow phone, or large text: the month takes its own line, and the
+/// Assigned and Available columns tighten, so nothing is clipped.
+bool _isCompact(double width, double textScale) =>
+    width < 340 || textScale > 1.3;
+
 const _assignedWidth = 84.0;
 const _availableWidth = 96.0;
+const _compactAssignedWidth = 68.0;
+const _compactAvailableWidth = 80.0;
 
 class _ColumnLabels extends StatelessWidget {
-  const _ColumnLabels();
+  const _ColumnLabels({required this.compact});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -289,12 +306,14 @@ class _ColumnLabels extends StatelessWidget {
       letterSpacing: 0.88,
       color: Palette.muted,
     );
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(24, 6, 24, 6),
+    final assignedWidth = compact ? _compactAssignedWidth : _assignedWidth;
+    final availableWidth = compact ? _compactAvailableWidth : _availableWidth;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 6, 24, 6),
       child: Row(
         spacing: 8,
         children: [
-          Expanded(
+          const Expanded(
             child: Align(
               alignment: Alignment.centerLeft,
               child: FittedBox(
@@ -304,8 +323,8 @@ class _ColumnLabels extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: _assignedWidth,
-            child: Align(
+            width: assignedWidth,
+            child: const Align(
               alignment: Alignment.centerRight,
               child: FittedBox(
                 fit: BoxFit.scaleDown,
@@ -314,8 +333,8 @@ class _ColumnLabels extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: _availableWidth,
-            child: Align(
+            width: availableWidth,
+            child: const Align(
               alignment: Alignment.centerRight,
               child: FittedBox(
                 fit: BoxFit.scaleDown,
@@ -371,17 +390,21 @@ class _CategoryRow extends StatelessWidget {
     required this.state,
     required this.category,
     required this.month,
+    required this.compact,
     required this.onTap,
   });
 
   final BudgetState state;
   final Category category;
   final CalendarMonth month;
+  final bool compact;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final available = state.available(category.id, month);
+    final assignedWidth = compact ? _compactAssignedWidth : _assignedWidth;
+    final availableWidth = compact ? _compactAvailableWidth : _availableWidth;
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -400,19 +423,27 @@ class _CategoryRow extends StatelessWidget {
                 Expanded(
                   child: Text(
                     category.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 15),
                   ),
                 ),
                 SizedBox(
-                  width: _assignedWidth,
-                  child: Text(
-                    state.assigned(category.id, month).format(),
-                    textAlign: TextAlign.right,
-                    style: amountStyle(fontSize: 13, color: Palette.muted),
+                  width: assignedWidth,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        state.assigned(category.id, month).format(),
+                        textAlign: TextAlign.right,
+                        style: amountStyle(fontSize: 13, color: Palette.muted),
+                      ),
+                    ),
                   ),
                 ),
                 SizedBox(
-                  width: _availableWidth,
+                  width: availableWidth,
                   child: Align(
                     alignment: Alignment.centerRight,
                     child: AvailablePill(available),

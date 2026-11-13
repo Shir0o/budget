@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:budget/app.dart';
 import 'package:budget/screens/accounts_screen.dart';
 import 'package:budget/screens/budget_screen.dart';
@@ -121,6 +119,7 @@ Future<void> _pump(
   double textScale = 1,
   Brightness brightness = Brightness.light,
 }) async {
+  _recordLayoutErrors();
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   tester.platformDispatcher.platformBrightnessTestValue = brightness;
@@ -144,17 +143,43 @@ Future<void> _open(WidgetTester tester, Section section) async {
   await tester.pumpAndSettle();
 }
 
-/// Fails the test on a RenderFlex (or other layout) exception, naming the
-/// view it happened in.
-void _expectNoOverflow(WidgetTester tester, String view) {
-  final error = tester.takeException();
-  expect(error, isNull, reason: 'Layout error on $view: $error');
+/// Errors the framework reported while laying out since the last checkpoint. A
+/// RenderFlex overflow arrives here as a `FlutterError` during layout.
+final _layoutErrors = <String>[];
+
+/// Records every error a frame reports for the rest of the test, instead of only
+/// the frame a view happens to end on. The handler the binding installed stays
+/// underneath: it is what turns a failure into a test failure, and it asserts
+/// that it saw any `expect` this test raises.
+void _recordLayoutErrors() {
+  _layoutErrors.clear();
+  final reported = FlutterError.onError;
+  FlutterError.onError = (details) {
+    _layoutErrors.add(details.exceptionAsString());
+    reported?.call(details);
+  };
 }
 
-/// Goldens are compared on the platform that generated them. Font
-/// rasterisation differs on Linux/Windows, so CI still runs every view and
-/// the overflow checks, and only macOS compares the images.
-bool get _comparesGoldens => Platform.isMacOS;
+/// Fails the pass if any frame overflowed or otherwise failed to lay out,
+/// naming the screen the pass was on.
+void _expectNoOverflow(WidgetTester tester, String view) {
+  final errors = [..._layoutErrors];
+  _layoutErrors.clear();
+  // The binding keeps its own copy of each error; hand it back so the next one
+  // reported is not read as a second, unrelated failure.
+  tester.takeException();
+  expect(
+    errors,
+    isEmpty,
+    reason: 'Layout errors on $view:\n\n${errors.join('\n\n')}',
+  );
+}
+
+/// Goldens are generated with `flutter test --update-goldens` and compared only
+/// on a run that was asked to write them. An ordinary `flutter test` therefore
+/// audits every screen and every scale factor without needing the images, and
+/// passes when they are missing or were drawn on another platform.
+bool get _comparesGoldens => autoUpdateGoldenFiles;
 
 Future<void> _capture(WidgetTester tester, String name) async {
   if (!_comparesGoldens) return;
@@ -164,7 +189,9 @@ Future<void> _capture(WidgetTester tester, String name) async {
   );
 }
 
-/// A primary-view pass: the four tabs every phone has, in order.
+/// A primary-view pass: every tab the phone has, in order, ending back where it
+/// started. Each hop is a real tap on the bottom navigation, and each screen is
+/// checked for layout errors before the next one is opened.
 Future<void> _capturePrimaryViews(
   WidgetTester tester,
   String prefix, {
@@ -191,6 +218,11 @@ Future<void> _capturePrimaryViews(
   expect(find.byType(HistoryScreen), findsOneWidget);
   expect(find.text('Change History'), findsOneWidget);
   await _capture(tester, '${prefix}_history');
+
+  // Back to where the pass started, so the round trip is exercised too.
+  await _open(tester, Section.budget);
+  _expectNoOverflow(tester, '$prefix: Budget again');
+  expect(find.byType(BudgetScreen), findsOneWidget);
 }
 
 void main() {

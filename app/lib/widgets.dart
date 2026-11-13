@@ -65,12 +65,15 @@ class AvailablePill extends StatelessWidget {
         color: background,
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        amount.format(),
-        style: amountStyle(
-          fontSize: 13,
-          fontWeight: amount.isNegative ? FontWeight.w600 : FontWeight.w500,
-          color: foreground,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          amount.format(),
+          style: amountStyle(
+            fontSize: 13,
+            fontWeight: amount.isNegative ? FontWeight.w600 : FontWeight.w500,
+            color: foreground,
+          ),
         ),
       ),
     );
