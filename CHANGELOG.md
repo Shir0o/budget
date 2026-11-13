@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/Shir0o/budget/compare/v1.0.3...v1.0.4) (2026-11-13)
+
+
+### Bug Fixes
+
+* **ui:** adapt category row and available pill scaling ([#99](https://github.com/Shir0o/budget/issues/99)) ([ef7df33](https://github.com/Shir0o/budget/commit/ef7df33c476f2e93a45991d2de9e3efaf0537c2a))
+
 ## [1.0.3](https://github.com/Shir0o/budget/compare/v1.0.2...v1.0.3) (2026-11-11)
 
 

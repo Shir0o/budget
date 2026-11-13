@@ -1,7 +1,7 @@
 name: budget
 description: Private, local-first, zero-based budget.
 publish_to: none
-version: 1.0.3
+version: 1.0.4
 resolution: workspace
 environment:
   sdk: ^3.13.0
