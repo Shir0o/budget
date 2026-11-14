@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.5](https://github.com/Shir0o/budget/compare/v1.0.4...v1.0.5) (2026-11-14)
+
+
+### Bug Fixes
+
+* **ui:** adapt category action buttons and tap targets ([#102](https://github.com/Shir0o/budget/issues/102)) ([486b654](https://github.com/Shir0o/budget/commit/486b654292034fdb03d10cc7a04fc98e993780e7))
+
 ## [1.0.4](https://github.com/Shir0o/budget/compare/v1.0.3...v1.0.4) (2026-11-13)
 
 
