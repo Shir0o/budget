@@ -87,7 +87,7 @@ class _CategoryPickerState extends State<_CategoryPicker> {
       key: ValueKey('pick-$id'),
       onTap: () => Navigator.of(context).pop(id),
       child: Container(
-        constraints: const BoxConstraints(minHeight: 46),
+        constraints: const BoxConstraints(minHeight: 48),
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: Palette.divider)),
         ),

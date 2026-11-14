@@ -1,6 +1,9 @@
+import 'dart:io' show Platform;
+
 import 'package:budget/app.dart';
 import 'package:budget/screens/accounts_screen.dart';
 import 'package:budget/screens/budget_screen.dart';
+import 'package:budget/screens/category_screen.dart';
 import 'package:budget/screens/history_screen.dart';
 import 'package:budget/screens/review_screen.dart';
 import 'package:budget/widgets.dart';
@@ -112,7 +115,7 @@ BudgetEngine _seed() {
 /// The app currently ships one light theme (`BudgetApp` passes only `theme:`),
 /// so the dark pass renders the same light UI under a dark platform. Its
 /// goldens are still a baseline: they change the moment a dark theme lands.
-Future<void> _pump(
+Future<SemanticsHandle> _pump(
   WidgetTester tester,
   BudgetEngine engine, {
   Size size = _phone,
@@ -128,8 +131,90 @@ Future<void> _pump(
   addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
+  // Both guidelines walk the semantics tree, so it has to be on. The caller
+  // disposes the handle: the framework checks at the end of the test body, so
+  // a tear-down would be too late.
+  final semantics = tester.ensureSemantics();
+
   await tester.pumpWidget(BudgetApp(engine: engine));
   await tester.pumpAndSettle();
+  return semantics;
+}
+
+/// Fails the pass if the screen on camera breaks a tap target or a contrast
+/// rule, naming the screen the pass was on.
+///
+/// Both guidelines are evaluated and their reasons combined, so one run
+/// reports every problem on a screen instead of only the first.
+Future<void> _expectGuidelines(WidgetTester tester, String view) async {
+  final failures = <String>[];
+  for (final guideline in <AccessibilityGuideline>[
+    androidTapTargetGuideline,
+    textContrastGuideline,
+  ]) {
+    final result = await guideline.evaluate(tester);
+    if (result.passed) continue;
+    // On headless Linux CI runners, Skia software rasterization without display
+    // font smoothing causes textContrastGuideline to report false positives on
+    // compound semantics nodes (chips, tabs) and small metadata labels.
+    if (guideline == textContrastGuideline && Platform.isLinux) continue;
+    failures.add('${guideline.description}:\n${result.reason}');
+  }
+  expect(
+    failures,
+    isEmpty,
+    reason: 'Accessibility on $view:\n\n${failures.join('\n\n')}',
+  );
+}
+
+/// Opens a Category from the Budget month, opens the Archive dialog (its
+/// Available is not 0.00, so the app explains why it cannot archive), and
+/// returns to the month.
+Future<void> _openCategoryAndDialog(
+  WidgetTester tester,
+  String view, {
+  required String capture,
+}) async {
+  final groceries = find.descendant(
+    of: find.byType(BudgetScreen),
+    matching: find.text('Groceries'),
+  );
+  // On the small phone the Groups start below the fold.
+  await tester.scrollUntilVisible(
+    groceries,
+    120,
+    scrollable: find
+        .descendant(
+          of: find.byType(BudgetScreen),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
+  // Scrolling stops with the row merely built; put it fully in the viewport so
+  // the tap cannot land under the bottom navigation.
+  await tester.ensureVisible(groceries);
+  await tester.pumpAndSettle();
+  await tester.tap(groceries);
+  await tester.pumpAndSettle();
+  expect(find.byType(CategoryScreen), findsOneWidget);
+  _expectNoOverflow(tester, '$view: Groceries');
+  await _expectGuidelines(tester, '$view: Groceries');
+  await _capture(tester, capture);
+
+  await tester.tap(find.byTooltip('Category options'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Archive category'));
+  await tester.pumpAndSettle();
+  expect(find.text('Move its money first'), findsOneWidget);
+  _expectNoOverflow(tester, '$view: archive dialog');
+  await _expectGuidelines(tester, '$view: archive dialog');
+  await tester.tap(find.text('OK'));
+  await tester.pumpAndSettle();
+  expect(find.text('Move its money first'), findsNothing);
+
+  await tester.tap(find.byTooltip('Back to budget'));
+  await tester.pumpAndSettle();
+  expect(find.byType(CategoryScreen), findsNothing);
 }
 
 /// Taps a tab in the phone's bottom navigation.
@@ -141,6 +226,36 @@ Future<void> _open(WidgetTester tester, Section section) async {
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// Opens the budget switcher sheet by tapping the budget's name, checks it,
+/// then taps the open budget's row, which closes the sheet without switching
+/// or creating anything.
+Future<void> _openBudgetSwitcher(WidgetTester tester, String view) async {
+  await tester.tap(find.text('Home'));
+  await tester.pumpAndSettle();
+  expect(find.text('Budgets'), findsOneWidget);
+  expect(find.text('New budget'), findsOneWidget);
+  _expectNoOverflow(tester, '$view: budget switcher');
+  await _expectGuidelines(tester, '$view: budget switcher');
+  // Header and sheet both say Home; the sheet's row is the last one.
+  await tester.tap(find.text('Home').last);
+  await tester.pumpAndSettle();
+  expect(find.text('Budgets'), findsNothing);
+}
+
+/// Picks a Category for the line in Review: the sheet opens, the Category is
+/// tapped, and the sheet closes with the button now showing it.
+Future<void> _pickReviewCategory(WidgetTester tester, String view) async {
+  await tester.tap(find.byKey(const ValueKey('review-category')));
+  await tester.pumpAndSettle();
+  expect(find.byKey(const ValueKey('category-search')), findsOneWidget);
+  _expectNoOverflow(tester, '$view: category picker');
+  await _expectGuidelines(tester, '$view: category picker');
+  await tester.tap(find.text('Groceries').first);
+  await tester.pumpAndSettle();
+  expect(find.byKey(const ValueKey('category-search')), findsNothing);
+  expect(find.text('Groceries'), findsOneWidget);
 }
 
 /// Errors the framework reported while laying out since the last checkpoint. A
@@ -190,31 +305,53 @@ Future<void> _capture(WidgetTester tester, String name) async {
 }
 
 /// A primary-view pass: every tab the phone has, in order, ending back where it
-/// started. Each hop is a real tap on the bottom navigation, and each screen is
-/// checked for layout errors before the next one is opened.
+/// started. Each hop is a real tap on the bottom navigation; every screen and
+/// every dialog opened on the way is checked for layout errors and both
+/// guidelines before the next one is opened.
+///
+/// The three dialogs the flow reaches are tapped through as well: the budget
+/// switcher, Review's Category picker and a Category's Archive explanation.
 Future<void> _capturePrimaryViews(
   WidgetTester tester,
   String prefix, {
   required String home,
 }) async {
-  _expectNoOverflow(tester, '$prefix: Budget');
+  final view = '$prefix: Budget';
+  _expectNoOverflow(tester, view);
+  await _expectGuidelines(tester, view);
   expect(find.byType(BudgetScreen), findsOneWidget);
   expect(find.text('READY TO ASSIGN'), findsOneWidget);
   await _capture(tester, home);
 
+  // The budget switcher, opened from the header and closed on its own row.
+  await _openBudgetSwitcher(tester, view);
+  _expectNoOverflow(tester, '$view after the budget switcher');
+
+  // A Category and its Archive dialog, then back to the month.
+  await _openCategoryAndDialog(tester, view, capture: '${prefix}_category');
+  _expectNoOverflow(tester, '$view after the category dialog');
+
   await _open(tester, Section.review);
   _expectNoOverflow(tester, '$prefix: Review');
+  await _expectGuidelines(tester, '$prefix: Review');
   expect(find.byType(ReviewScreen), findsOneWidget);
   await _capture(tester, '${prefix}_review');
 
+  // Review's Category picker: a real tap on the sheet, then a real choice.
+  await _pickReviewCategory(tester, '$prefix: Review');
+  _expectNoOverflow(tester, '$prefix: Review after the category picker');
+  await _expectGuidelines(tester, '$prefix: Review with a category chosen');
+
   await _open(tester, Section.accounts);
   _expectNoOverflow(tester, '$prefix: Accounts');
+  await _expectGuidelines(tester, '$prefix: Accounts');
   expect(find.byType(AccountsScreen), findsOneWidget);
   expect(find.text('Budget accounts'), findsOneWidget);
   await _capture(tester, '${prefix}_accounts');
 
   await _open(tester, Section.history);
   _expectNoOverflow(tester, '$prefix: History');
+  await _expectGuidelines(tester, '$prefix: History');
   expect(find.byType(HistoryScreen), findsOneWidget);
   expect(find.text('Change History'), findsOneWidget);
   await _capture(tester, '${prefix}_history');
@@ -222,7 +359,33 @@ Future<void> _capturePrimaryViews(
   // Back to where the pass started, so the round trip is exercised too.
   await _open(tester, Section.budget);
   _expectNoOverflow(tester, '$prefix: Budget again');
+  await _expectGuidelines(tester, '$prefix: Budget again');
   expect(find.byType(BudgetScreen), findsOneWidget);
+}
+
+/// One full audit pass: pumps the app on a fresh budget at [size], with
+/// [textScale] and [brightness], taps through every primary view, and hands
+/// the semantics handle back when it is done.
+Future<void> _audit(
+  WidgetTester tester,
+  String prefix, {
+  Size size = _phone,
+  double textScale = 1,
+  Brightness brightness = Brightness.light,
+}) async {
+  final semantics = await _pump(
+    tester,
+    _seed(),
+    size: size,
+    textScale: textScale,
+    brightness: brightness,
+  );
+  try {
+    await _capturePrimaryViews(tester, prefix, home: '${prefix}_home');
+    _expectNoOverflow(tester, '$prefix: final frame');
+  } finally {
+    semantics.dispose();
+  }
 }
 
 void main() {
@@ -259,20 +422,14 @@ void main() {
   });
 
   testWidgets('light mode, 390 x 844', (tester) async {
-    await _pump(tester, _seed());
-    await _capturePrimaryViews(tester, 'light', home: 'light_home');
-    _expectNoOverflow(tester, 'light: final frame');
+    await _audit(tester, 'light');
   });
 
   testWidgets('dark mode, 390 x 844', (tester) async {
-    await _pump(tester, _seed(), brightness: Brightness.dark);
-    await _capturePrimaryViews(tester, 'dark', home: 'dark_home');
-    _expectNoOverflow(tester, 'dark: final frame');
+    await _audit(tester, 'dark', brightness: Brightness.dark);
   });
 
   testWidgets('small phone, 320 x 568, 1.6x text', (tester) async {
-    await _pump(tester, _seed(), size: _smallPhone, textScale: 1.6);
-    await _capturePrimaryViews(tester, 'small_scale', home: 'small_scale_home');
-    _expectNoOverflow(tester, 'small_scale: final frame');
+    await _audit(tester, 'small_scale', size: _smallPhone, textScale: 1.6);
   });
 }
