@@ -237,30 +237,47 @@ class _CategoryScreenState extends State<CategoryScreen> {
                           ],
                           total: available.format(),
                         ),
-                        Row(
-                          spacing: 8,
-                          children: [
-                            Expanded(
-                              child: FilledButton(
-                                onPressed: _assign,
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: Palette.ink,
-                                  foregroundColor: Palette.background,
-                                  minimumSize: const Size.fromHeight(44),
-                                ),
-                                child: const Text('Assign'),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            // A narrow card, or large text, leaves too little
+                            // width for both labels: each action takes its own
+                            // full-width line instead of wrapping.
+                            final stacked =
+                                constraints.maxWidth < 300 ||
+                                MediaQuery.textScalerOf(context).scale(15) /
+                                        15 >
+                                    1.2;
+                            final assign = FilledButton(
+                              onPressed: _assign,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Palette.ink,
+                                foregroundColor: Palette.background,
+                                minimumSize: const Size.fromHeight(48),
                               ),
-                            ),
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: _moveMoney,
-                                style: OutlinedButton.styleFrom(
-                                  minimumSize: const Size.fromHeight(44),
-                                ),
-                                child: const Text('Move money'),
+                              child: const Text('Assign'),
+                            );
+                            final moveMoney = OutlinedButton(
+                              onPressed: _moveMoney,
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(48),
                               ),
-                            ),
-                          ],
+                              child: const Text('Move money'),
+                            );
+                            if (!stacked) {
+                              return Row(
+                                spacing: 8,
+                                children: [
+                                  Expanded(child: assign),
+                                  Expanded(child: moveMoney),
+                                ],
+                              );
+                            }
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              spacing: 8,
+                              children: [assign, moveMoney],
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -335,9 +352,9 @@ class _Breakdown extends StatelessWidget {
       children: [
         for (final (name, value) in rows)
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            spacing: 12,
             children: [
-              Text(name, style: label),
+              Expanded(child: Text(name, style: label)),
               Text(value, style: amountStyle(fontSize: 14)),
             ],
           ),

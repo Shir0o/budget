@@ -472,7 +472,7 @@ class SelectChip extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 44),
+        constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
         child: Center(
           widthFactor: 1,
           child: Container(
@@ -630,7 +630,7 @@ class Segmented<T> extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: () => onChanged(value),
                 child: Container(
-                  height: 40,
+                  height: 48,
                   alignment: Alignment.center,
                   decoration: value == selected
                       ? BoxDecoration(

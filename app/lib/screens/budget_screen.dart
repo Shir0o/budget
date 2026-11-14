@@ -134,7 +134,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         child: InkWell(
                           onTap: () => showBudgetSwitcher(context),
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 44),
+                            constraints: const BoxConstraints(minHeight: 48),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               spacing: 6,
