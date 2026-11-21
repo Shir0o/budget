@@ -616,6 +616,7 @@ class Segmented<T> extends StatelessWidget {
     padding: const EdgeInsets.all(3),
     decoration: BoxDecoration(
       color: Palette.zeroPill,
+      border: Border.all(color: Palette.cardBorder),
       borderRadius: BorderRadius.circular(12),
     ),
     child: Row(
@@ -626,33 +627,31 @@ class Segmented<T> extends StatelessWidget {
             child: Semantics(
               button: true,
               selected: value == selected,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onChanged(value),
-                child: Container(
-                  height: 48,
-                  alignment: Alignment.center,
-                  decoration: value == selected
-                      ? BoxDecoration(
-                          color: Palette.card,
-                          borderRadius: BorderRadius.circular(9),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x1F17191B),
-                              offset: Offset(0, 1),
-                              blurRadius: 2,
-                            ),
-                          ],
-                        )
-                      : null,
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: value == selected
-                          ? FontWeight.w600
-                          : FontWeight.w400,
-                      color: value == selected ? Palette.ink : Palette.inkSoft,
+              child: Material(
+                color: value == selected ? Palette.ink : Palette.card,
+                borderRadius: BorderRadius.circular(9),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(9),
+                  excludeFromSemantics: true,
+                  onTap: () => onChanged(value),
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: value == selected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: value == selected
+                            ? Palette.background
+                            : Palette.inkSoft,
+                      ),
                     ),
                   ),
                 ),
