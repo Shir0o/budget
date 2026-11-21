@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.6](https://github.com/Shir0o/budget/compare/v1.0.5...v1.0.6) (2026-11-21)
+
+
+### Bug Fixes
+
+* **ui:** clarify segmented control selected and unselected states ([#106](https://github.com/Shir0o/budget/issues/106)) ([8511130](https://github.com/Shir0o/budget/commit/85111305299c236235af630ea810096777e9e228))
+
 ## [1.0.5](https://github.com/Shir0o/budget/compare/v1.0.4...v1.0.5) (2026-11-14)
 
 
